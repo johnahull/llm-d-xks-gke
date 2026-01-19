@@ -31,7 +31,10 @@ spec:
             google.com/tpu: 4
         env:
         - name: HF_TOKEN
-          value: "YOUR_HUGGINGFACE_TOKEN_HERE"  # Replace with your HF token
+          valueFrom:
+            secretKeyRef:
+              name: huggingface-token
+              key: HF_TOKEN
         - name: PJRT_DEVICE
           value: "TPU"
         - name: TPU_CHIPS_PER_HOST_BOUNDS

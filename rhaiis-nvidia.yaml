@@ -29,7 +29,10 @@ spec:
           mountPath: /usr/local/nvidia
         env:
         - name: HF_TOKEN
-          value: "YOUR_HUGGINGFACE_TOKEN_HERE"  # Replace with your HF token
+          valueFrom:
+            secretKeyRef:
+              name: huggingface-token
+              key: HF_TOKEN
         - name: NVIDIA_VISIBLE_DEVICES
           value: "all"
         - name: NVIDIA_DRIVER_CAPABILITIES
