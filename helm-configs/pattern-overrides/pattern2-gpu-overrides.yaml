@@ -1,16 +1,10 @@
-# Pattern 2: Mistral-7B Multi-Model Configuration
-
-# Common labels for multi-model discovery
-commonLabels:
-  llm-d.ai/inferenceServing: "true"
-  llm-d.ai/deployment: "multi-model"
-  llm-d.ai/model: "mistral-7b"
+# Pattern 2: Phi-3-mini Multi-Model Configuration
 
 # Model Configuration
 modelArtifacts:
-  uri: "hf://mistralai/Mistral-7B-Instruct-v0.3"
-  name: "mistralai/Mistral-7B-Instruct-v0.3"
-  size: 20Gi  # 7B model needs more space than 2B
+  uri: "hf://microsoft/Phi-3-mini-4k-instruct"
+  name: "microsoft/Phi-3-mini-4k-instruct"
+  size: 15Gi  # 3.8B model + tokenizer + config files
   authSecretName: "huggingface-token"
 
 # Decode Configuration (vLLM inference)
@@ -34,9 +28,9 @@ decode:
     args:
       - "--disable-uvicorn-access-log"
       - "--max-model-len"
-      - "2048"  # Conservative for T4 GPU memory (14.58 GB)
+      - "2048"  # Phi-3-mini 4k context, conservative for T4
       - "--gpu-memory-utilization"
-      - "0.85"  # Conservative for 7B model on T4
+      - "0.85"  # Good balance for 3.8B model on T4
       - "--dtype"
       - "half"  # FP16 for efficiency
     ports:
