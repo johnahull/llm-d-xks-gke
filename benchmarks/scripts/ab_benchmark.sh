@@ -1,11 +1,17 @@
 #!/bin/bash
-# Apache Bench benchmark for vLLM
-# Usage: ./ab_benchmark.sh [base_url] [num_requests] [concurrency]
+# Apache Bench benchmark for any OpenAI-compatible LLM API
+# Supports: vLLM, Ollama, LM Studio, OpenAI API, and more
+#
+# Usage: ./ab_benchmark.sh [base_url] [num_requests] [concurrency] [model_name]
+# Examples:
+#   ./ab_benchmark.sh http://localhost:8000 100 10 google/gemma-2b-it
+#   ./ab_benchmark.sh http://localhost:11434 50 5 llama3.2:3b
+#   ./ab_benchmark.sh http://35.214.154.17 200 20 Qwen/Qwen2.5-3B-Instruct
 
-BASE_URL=${1:-"http://136.116.159.221:8000"}
+BASE_URL=${1:-"http://35.214.154.17"}
 NUM_REQUESTS=${2:-100}
 CONCURRENCY=${3:-10}
-MODEL="google/gemma-2b-it"
+MODEL=${4:-"Qwen/Qwen2.5-3B-Instruct"}
 
 # Colors
 GREEN='\033[0;32m'
@@ -13,9 +19,10 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}========================================"
-echo "  Apache Bench vLLM Benchmark"
+echo "  Apache Bench LLM API Benchmark"
 echo "========================================${NC}"
 echo "Target: $BASE_URL"
+echo "Model: $MODEL"
 echo "Total requests: $NUM_REQUESTS"
 echo "Concurrency: $CONCURRENCY"
 echo ""

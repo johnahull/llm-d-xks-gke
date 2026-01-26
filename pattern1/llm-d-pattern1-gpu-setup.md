@@ -18,7 +18,8 @@ This guide deploys **llm-d Pattern 1**: A single-replica vLLM deployment with in
 ```
 Internet → GKE Gateway → Inference Scheduler → vLLM Pod (google/gemma-2b-it)
                               ↓
-                        Prometheus metrics
+                    Metrics endpoints exposed
+                   (scheduler:9090, vLLM:8000/metrics)
 ```
 
 **Components**:
@@ -1240,30 +1241,77 @@ Split prefill and decode phases:
 
 ## Monitoring and Observability
 
-### Prometheus Metrics
+### Metrics Endpoints
 
-llm-d exposes Prometheus metrics for both vLLM and the scheduler:
+llm-d components expose Prometheus-format metrics endpoints, but **no Prometheus server is deployed** in this GKE setup. GKE uses managed monitoring (gke-metrics-agent) instead.
 
+**Access metrics directly**:
+
+**Scheduler Metrics** (port 9090):
 ```bash
-# Port-forward to metrics endpoint
-kubectl port-forward -n llm-d svc/<vllm-service> 8000:8000
+# Port-forward to scheduler metrics
+kubectl port-forward -n llm-d svc/gaie-pattern1-epp 9090:9090
+
+# View metrics
+curl http://localhost:9090/metrics
+
+# Key metrics:
+# - controller_runtime_active_workers{controller="inferencepool"}
+# - controller_runtime_reconcile_errors_total
+# - controller_runtime_reconcile_total
+# - inference_pool_backend_health
+# - inference_pool_request_count
+```
+
+**vLLM Metrics** (port 8000):
+```bash
+# Get vLLM pod name
+POD=$(kubectl get pods -n llm-d -l llm-d.ai/inferenceServing=true -o jsonpath='{.items[0].metadata.name}')
+
+# Port-forward to vLLM metrics
+kubectl port-forward -n llm-d $POD 8000:8000
+
+# View metrics
 curl http://localhost:8000/metrics
 
 # Key metrics:
 # - vllm:e2e_request_latency_seconds_bucket
 # - vllm:num_requests_running
 # - vllm:kv_cache_usage_perc
-# - inference_pool_backend_health
-# - inference_pool_request_count
+# - vllm:gpu_cache_usage_perc
+# - vllm:prompt_tokens_total
+# - vllm:generation_tokens_total
 ```
 
-### Grafana Dashboard
+### GKE Managed Monitoring
 
-Use vLLM's official Grafana dashboard:
+GKE automatically collects metrics via `gke-metrics-agent`. View in Google Cloud Console:
+- **Metrics Explorer**: Search for custom metrics from your pods
+- **Dashboards**: Create custom dashboards with GKE metrics
+
+### Optional: Deploy Prometheus
+
+If you need a Prometheus server for dashboards or alerting:
+
+```bash
+# Enable Prometheus in helmfile (edit pattern1-overrides.yaml)
+monitoring:
+  prometheus:
+    enabled: true
+
+# Enable PodMonitors
+decode:
+  monitoring:
+    podmonitor:
+      enabled: true
+
+# Redeploy
+helmfile -e gke -n llm-d apply
+```
+
+Then use vLLM's official Grafana dashboard:
 - Dashboard ID: 23991
 - URL: https://grafana.com/grafana/dashboards/23991-vllm/
-
-Import into your Grafana instance and point to your Prometheus data source.
 
 ## Deployment Status (2026-01-20)
 
@@ -2036,27 +2084,32 @@ kubectl logs -n llm-d -l inferencepool=gaie-pattern1-epp --tail=50
 
 **Expected**: Requests distributed across replicas based on load, queue depth, and KV cache state.
 
-### 4. Monitor Metrics and Set Up Dashboards
+### 4. Monitor Metrics
 
-**View Prometheus metrics**:
+**Access metrics endpoints directly**:
 ```bash
-# Port-forward to scheduler metrics
+# Scheduler metrics (port 9090)
 kubectl port-forward -n llm-d svc/gaie-pattern1-epp 9090:9090
+curl http://localhost:9090/metrics | grep -E "(backend_health|request_count)"
 
-# View available metrics
-curl http://localhost:9090/metrics
-
-# Key metrics to monitor:
-# - inference_pool_backend_health
-# - inference_pool_request_count
-# - vllm:num_requests_running
-# - vllm:kv_cache_usage_perc
+# vLLM metrics (port 8000)
+POD=$(kubectl get pods -n llm-d -l llm-d.ai/inferenceServing=true -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n llm-d $POD 8000:8000
+curl http://localhost:8000/metrics | grep -E "(vllm:num_requests|kv_cache)"
 ```
 
-**Set up Grafana** (if available):
-- Import vLLM dashboard: https://grafana.com/grafana/dashboards/23991-vllm/
-- Add InferencePool metrics
-- Monitor scheduler routing decisions
+**Key metrics to monitor**:
+- `inference_pool_backend_health` - Backend availability
+- `inference_pool_request_count` - Request routing count
+- `vllm:num_requests_running` - Active inference requests
+- `vllm:kv_cache_usage_perc` - KV cache utilization
+
+**Use GKE managed monitoring**:
+- View metrics in Google Cloud Console → Metrics Explorer
+- Create custom dashboards with pod metrics
+- Set up alerts based on metrics thresholds
+
+**Optional**: Deploy Prometheus + Grafana for advanced dashboards (see Monitoring section above)
 
 ### 5. Cost Management
 
@@ -2182,7 +2235,7 @@ http://136.112.200.85:8000/v1/completions
 ✅ Benchmarking (compare Gateway vs direct LoadBalancer)
 ✅ Pattern 2 deployment (multi-model)
 ✅ Pattern 3 scaling (3+ replicas for load balancing)
-✅ Metrics monitoring (Prometheus + Grafana)
+✅ Metrics monitoring (via GKE managed monitoring or optional Prometheus)
 
 ## References
 

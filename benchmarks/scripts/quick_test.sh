@@ -1,9 +1,15 @@
 #!/bin/bash
-# Quick validation test for RHAIIS vLLM deployment
-# Usage: ./quick_test.sh [base_url]
+# Quick validation test for any OpenAI-compatible LLM API
+# Supports: vLLM, Ollama, LM Studio, OpenAI API, and more
+#
+# Usage: ./quick_test.sh [base_url] [model_name]
+# Examples:
+#   ./quick_test.sh http://localhost:8000 google/gemma-2b-it
+#   ./quick_test.sh http://localhost:11434 llama3.2:3b
+#   ./quick_test.sh https://api.openai.com gpt-3.5-turbo
 
-BASE_URL=${1:-"http://136.116.159.221:8000"}
-MODEL="google/gemma-2b-it"
+BASE_URL=${1:-"http://35.214.154.17"}
+MODEL=${2:-"Qwen/Qwen2.5-3B-Instruct"}
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -13,9 +19,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo "========================================"
-echo "  RHAIIS vLLM Quick Validation Test"
+echo "  LLM API Quick Validation Test"
 echo "========================================"
 echo "Target: $BASE_URL"
+echo "Model: $MODEL"
 echo ""
 
 # 1. Health check
@@ -102,4 +109,8 @@ echo "  All tests passed!"
 echo "========================================${NC}"
 echo ""
 echo "Quick validation complete. For comprehensive benchmarking, use:"
-echo "  python benchmarks/python/benchmark_async.py --target gke-t4 --scenario latency_benchmark"
+echo "  # With predefined target:"
+echo "  python benchmarks/python/benchmark_async.py --target tpu-v6e --scenario latency_benchmark"
+echo ""
+echo "  # With custom endpoint:"
+echo "  python benchmarks/python/benchmark_async.py --base-url $BASE_URL --model \"$MODEL\" --num-requests 100 --concurrency 10"

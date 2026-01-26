@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Async vLLM Benchmark
+Async LLM API Benchmark
 
 Main benchmarking tool for measuring TTFT, TPOT, throughput, and latency
-of vLLM deployments using async HTTP requests.
+of any OpenAI-compatible LLM API (vLLM, Ollama, LM Studio, OpenAI, etc.)
+using async HTTP requests.
 """
 
 import argparse
@@ -27,7 +28,7 @@ from utils.report_generator import generate_json_report, generate_html_report
 
 
 class AsyncBenchmarker:
-    """Async benchmarker for vLLM inference"""
+    """Async benchmarker for any OpenAI-compatible LLM API"""
 
     def __init__(self, base_url: str, model: str, config: Dict[str, Any]):
         self.base_url = base_url.rstrip('/')
@@ -211,29 +212,54 @@ def load_config(config_dir: Path) -> tuple:
 
 
 def main():
+    # Determine paths early for loading config
+    script_dir = Path(__file__).parent
+    config_dir = script_dir.parent / "config"
+
+    # Load configuration to get available targets
+    try:
+        targets, scenarios, defaults = load_config(config_dir)
+        available_targets = list(targets.keys())
+        available_scenarios = list(scenarios.keys())
+    except Exception as e:
+        print(f"Warning: Could not load config: {e}")
+        print("Using default target/scenario options")
+        available_targets = ['gke-t4', 'tpu-v6e']  # Fallback
+        available_scenarios = ['quick_validation', 'latency_benchmark', 'throughput_benchmark', 'load_test']
+
     parser = argparse.ArgumentParser(
-        description="Async benchmark for vLLM inference",
+        description="Async benchmark for any OpenAI-compatible LLM API",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
 Examples:
-  # Run latency benchmark on GKE T4
-  python benchmark_async.py --target gke-t4 --scenario latency_benchmark
+  # Run latency benchmark on a configured target
+  python benchmark_async.py --target tpu-v6e --scenario latency_benchmark
 
-  # Custom benchmark with specific URL
-  python benchmark_async.py --base-url http://localhost:8000 --num-requests 100 --concurrency 10
+  # Test all supported models for a target (multi-model benchmark)
+  python benchmark_async.py --target tpu-v6e --scenario latency_benchmark --all-models --output results/multi_model.json --html
 
-  # Output to specific file
-  python benchmark_async.py --target gke-t4 --output results/my_test.json
+  # Benchmark a local Ollama deployment
+  python benchmark_async.py --target ollama-local --scenario quick_validation
+
+  # Custom benchmark with specific URL and model
+  python benchmark_async.py --base-url http://localhost:8000 --model "my-model" --num-requests 100 --concurrency 10
+
+  # Output to specific file with HTML report
+  python benchmark_async.py --target tpu-v6e --output results/my_test.json --html
+
+Available targets: {', '.join(available_targets)}
+Available scenarios: {', '.join(available_scenarios)}
         """
     )
 
-    parser.add_argument('--target', choices=['gke-t4', 'tpu-v6e'],
+    parser.add_argument('--target', choices=available_targets,
                        help='Target deployment from config')
-    parser.add_argument('--scenario',
-                       choices=['quick_validation', 'latency_benchmark', 'throughput_benchmark', 'load_test'],
+    parser.add_argument('--scenario', choices=available_scenarios,
                        help='Test scenario from config')
     parser.add_argument('--base-url', help='Base URL (overrides target config)')
     parser.add_argument('--model', help='Model name (overrides target config)')
+    parser.add_argument('--all-models', action='store_true',
+                       help='Test all supported_models for the target (requires --target)')
     parser.add_argument('--num-requests', type=int, help='Number of requests')
     parser.add_argument('--concurrency', type=int, help='Concurrent requests')
     parser.add_argument('--max-tokens', type=int, help='Max tokens per request')
@@ -242,23 +268,32 @@ Examples:
 
     args = parser.parse_args()
 
-    # Determine paths
-    script_dir = Path(__file__).parent
-    config_dir = script_dir.parent / "config"
+    # Configuration already loaded earlier for argparse
+    # targets, scenarios, defaults already available from above
 
-    # Load configuration
-    targets, scenarios, defaults = load_config(config_dir)
+    # Validate --all-models flag
+    if args.all_models and not args.target:
+        parser.error("--all-models requires --target to be specified")
 
-    # Determine base URL and model
+    # Determine base URL and model(s)
     if args.target:
         target_config = targets[args.target]
         base_url = args.base_url or target_config["base_url"]
-        model = args.model or target_config["model"]
+
+        # Get models to test
+        if args.all_models:
+            models_to_test = target_config.get("supported_models", [target_config["model"]])
+            if not models_to_test:
+                models_to_test = [target_config["model"]]
+        elif args.model:
+            models_to_test = [args.model]
+        else:
+            models_to_test = [target_config["model"]]
     else:
         if not args.base_url or not args.model:
             parser.error("Either --target or both --base-url and --model must be specified")
         base_url = args.base_url
-        model = args.model
+        models_to_test = [args.model]
 
     # Determine test parameters
     if args.scenario:
@@ -298,55 +333,192 @@ Examples:
     # Generate prompts
     prompts = get_prompts_for_benchmark(max(num_requests, 20), distribution="mixed")
 
-    # Create benchmarker and run
-    print("="*60)
-    print("  vLLM Async Benchmark")
-    print("="*60)
-    print(f"\nTarget: {base_url}")
-    print(f"Model: {model}")
+    # Store results for all models
+    all_results = []
 
-    benchmarker = AsyncBenchmarker(base_url, model, config)
+    # Run benchmark for each model
+    for idx, model in enumerate(models_to_test):
+        if len(models_to_test) > 1:
+            print(f"\n\n{'='*60}")
+            print(f"  Testing Model {idx+1}/{len(models_to_test)}: {model}")
+            print(f"{'='*60}\n")
 
-    # Run benchmark
-    try:
-        metrics = asyncio.run(
-            benchmarker.run_benchmark(
-                num_requests,
-                concurrency,
-                prompts,
-                max_tokens,
-                warmup_requests
+        # Create benchmarker and run
+        print("="*60)
+        print("  LLM API Async Benchmark")
+        print("="*60)
+        print(f"\nTarget: {base_url}")
+        print(f"Model: {model}")
+        if args.target:
+            target_info = targets.get(args.target, {})
+            if 'backend' in target_info:
+                print(f"Backend: {target_info['backend']}")
+
+        benchmarker = AsyncBenchmarker(base_url, model, config)
+
+        # Run benchmark
+        try:
+            metrics = asyncio.run(
+                benchmarker.run_benchmark(
+                    num_requests,
+                    concurrency,
+                    prompts,
+                    max_tokens,
+                    warmup_requests
+                )
             )
-        )
-    except KeyboardInterrupt:
-        print("\n\nBenchmark interrupted by user")
-        return 1
+        except KeyboardInterrupt:
+            print("\n\nBenchmark interrupted by user")
+            return 1
 
-    # Display results
-    print(format_metrics_for_display(metrics))
+        # Display results
+        print(format_metrics_for_display(metrics))
+
+        # Store results
+        all_results.append({
+            "model": model,
+            "metrics": metrics,
+            "metadata": {
+                "target": args.target or "custom",
+                "scenario": args.scenario or "custom",
+                "base_url": base_url,
+                "model": model,
+                "num_requests": num_requests,
+                "concurrency": concurrency,
+                "max_tokens": max_tokens,
+            }
+        })
 
     # Save results
     if args.output:
-        metadata = {
-            "target": args.target or "custom",
-            "scenario": args.scenario or "custom",
-            "base_url": base_url,
-            "model": model,
-            "num_requests": num_requests,
-            "concurrency": concurrency,
-            "max_tokens": max_tokens,
-        }
-
         output_path = Path(args.output)
 
-        if args.output.endswith('.json') or not args.html:
-            generate_json_report(metrics, args.output, metadata)
+        if len(models_to_test) == 1:
+            # Single model - save as before
+            metadata = all_results[0]["metadata"]
+            metrics = all_results[0]["metrics"]
 
-        if args.output.endswith('.html') or args.html:
-            html_path = str(output_path.with_suffix('.html'))
-            generate_html_report(metrics, html_path, metadata)
+            if args.output.endswith('.json') or not args.html:
+                generate_json_report(metrics, args.output, metadata)
 
-    return 0 if metrics['mlperf_compliant'] else 1
+            if args.output.endswith('.html') or args.html:
+                html_path = str(output_path.with_suffix('.html'))
+                generate_html_report(metrics, html_path, metadata)
+        else:
+            # Multiple models - save comparison report
+            import json
+            from datetime import datetime
+
+            # Save individual JSON reports
+            for result in all_results:
+                model_name_safe = result["model"].replace("/", "_")
+                json_path = output_path.parent / f"{output_path.stem}_{model_name_safe}.json"
+                generate_json_report(result["metrics"], str(json_path), result["metadata"])
+
+            # Save combined comparison report
+            comparison_data = {
+                "timestamp": datetime.now().isoformat(),
+                "target": args.target or "custom",
+                "scenario": args.scenario or "custom",
+                "base_url": base_url,
+                "models_tested": len(models_to_test),
+                "results": [
+                    {
+                        "model": r["model"],
+                        "ttft_p50": r["metrics"]["ttft_p50"],
+                        "ttft_p95": r["metrics"]["ttft_p95"],
+                        "tpot_p50": r["metrics"]["tpot_p50"],
+                        "tpot_p95": r["metrics"]["tpot_p95"],
+                        "throughput": r["metrics"]["throughput_tokens_per_sec"],
+                        "error_rate": r["metrics"]["error_rate"],
+                        "mlperf_compliant": r["metrics"]["mlperf_compliant"]
+                    }
+                    for r in all_results
+                ]
+            }
+
+            comparison_path = output_path.parent / f"{output_path.stem}_comparison.json"
+            with open(comparison_path, 'w') as f:
+                json.dump(comparison_data, f, indent=2)
+
+            print(f"\n\nMulti-model comparison saved to: {comparison_path}")
+
+            # Generate HTML comparison if requested
+            if args.html or args.output.endswith('.html'):
+                html_path = output_path.parent / f"{output_path.stem}_comparison.html"
+                _generate_comparison_html(comparison_data, html_path)
+                print(f"HTML comparison report saved to: {html_path}")
+
+    # Return success if all models passed
+    return 0 if all(r["metrics"]['mlperf_compliant'] for r in all_results) else 1
+
+
+def _generate_comparison_html(comparison_data: Dict[str, Any], output_path: Path):
+    """Generate HTML comparison report for multiple models"""
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Multi-Model Benchmark Comparison</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }}
+        h1 {{ color: #333; }}
+        .metadata {{ background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
+        table {{ border-collapse: collapse; width: 100%; background: #fff; border-radius: 8px; }}
+        th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
+        th {{ background-color: #4CAF50; color: white; }}
+        tr:hover {{ background-color: #f5f5f5; }}
+        .mlperf-pass {{ color: green; font-weight: bold; }}
+        .mlperf-fail {{ color: red; font-weight: bold; }}
+    </style>
+</head>
+<body>
+    <h1>Multi-Model Benchmark Comparison</h1>
+    <div class="metadata">
+        <p><strong>Target:</strong> {comparison_data.get('target', 'N/A')}</p>
+        <p><strong>Scenario:</strong> {comparison_data.get('scenario', 'N/A')}</p>
+        <p><strong>Base URL:</strong> {comparison_data.get('base_url', 'N/A')}</p>
+        <p><strong>Timestamp:</strong> {comparison_data.get('timestamp', 'N/A')}</p>
+        <p><strong>Models Tested:</strong> {comparison_data.get('models_tested', 0)}</p>
+    </div>
+    <table>
+        <tr>
+            <th>Model</th>
+            <th>TTFT p50 (s)</th>
+            <th>TTFT p95 (s)</th>
+            <th>TPOT p50 (s)</th>
+            <th>TPOT p95 (s)</th>
+            <th>Throughput (tok/s)</th>
+            <th>Error Rate</th>
+            <th>MLPerf</th>
+        </tr>
+"""
+    for result in comparison_data.get('results', []):
+        mlperf_class = "mlperf-pass" if result.get('mlperf_compliant') else "mlperf-fail"
+        mlperf_text = "✓ Pass" if result.get('mlperf_compliant') else "✗ Fail"
+
+        html_content += f"""
+        <tr>
+            <td>{result.get('model', 'N/A')}</td>
+            <td>{result.get('ttft_p50', 0):.3f}</td>
+            <td>{result.get('ttft_p95', 0):.3f}</td>
+            <td>{result.get('tpot_p50', 0):.3f}</td>
+            <td>{result.get('tpot_p95', 0):.3f}</td>
+            <td>{result.get('throughput', 0):.2f}</td>
+            <td>{result.get('error_rate', 0)*100:.1f}%</td>
+            <td class="{mlperf_class}">{mlperf_text}</td>
+        </tr>
+"""
+
+    html_content += """
+    </table>
+</body>
+</html>
+"""
+
+    with open(output_path, 'w') as f:
+        f.write(html_content)
+
+    print(f"HTML report saved to: {output_path}")
 
 
 if __name__ == '__main__':

@@ -1,17 +1,65 @@
-# RHAIIS vLLM Benchmark Suite
+# LLM API Benchmark Suite
 
-Industry-standard benchmark suite for testing RHAIIS vLLM inference deployments on Google Cloud, following MLPerf 2025-2026 standards.
+Universal benchmark suite for testing any OpenAI-compatible LLM API, including:
+- **vLLM** (NVIDIA GPUs, Google TPUs, AMD GPUs, Intel XPUs)
+- **Ollama** (local deployments)
+- **LM Studio** (local deployments)
+- **llama.cpp** server
+- **OpenAI API** (for comparison)
+- **Any OpenAI-compatible endpoint**
+
+Follows MLPerf 2025-2026 standards for comprehensive performance measurement (TTFT, TPOT, throughput, latency percentiles).
 
 ## Quick Start
 
-**Note**: This guide uses shell variables for cluster-specific values. Set these based on your deployment:
-- `$EXTERNAL_IP` - Your cluster's external IP address
-- `$SERVICE_NAME` - Your Kubernetes service name (GKE)
-- `$TPU_NAME` - Your TPU VM name (TPU standalone)
-- `$ZONE` - Your cluster zone
-- `$PROJECT_ID` - Your GCP project ID
-- `$MODEL_NAME` - Your deployed model (e.g., google/gemma-2b-it)
-- `$MAX_TOKENS` - Maximum context length (e.g., 4096 for GPU, 2048 for TPU)
+### Option A: Use Predefined Target
+
+**1. Configure target** in `benchmarks/config/targets.yaml` (examples included for vLLM, Ollama, LM Studio):
+
+```yaml
+targets:
+  my-deployment:
+    name: "My LLM Deployment"
+    base_url: "http://localhost:8000"
+    model: "Qwen/Qwen2.5-3B-Instruct"
+    max_tokens: 2048
+    backend: "vLLM"
+```
+
+**2. Run benchmark:**
+```bash
+python benchmarks/python/benchmark_async.py --target my-deployment --scenario latency_benchmark
+```
+
+### Option B: Benchmark Any Endpoint Directly
+
+```bash
+# Quick test
+./benchmarks/scripts/quick_test.sh http://localhost:8000 "Qwen/Qwen2.5-3B-Instruct"
+
+# Full benchmark
+python benchmarks/python/benchmark_async.py \
+    --base-url http://localhost:8000 \
+    --model "Qwen/Qwen2.5-3B-Instruct" \
+    --num-requests 100 \
+    --concurrency 10
+```
+
+## Supported LLM Providers
+
+### vLLM Deployments
+- **GKE with NVIDIA GPUs** - Kubernetes-based (T4, A100, H100)
+- **Google Cloud TPUs** - v5e, v6e (with llm-d Gateway)
+- **AMD GPUs** - MI250, MI300 series
+- **Intel XPUs** - Gaudi accelerators
+
+### Local LLM Servers
+- **Ollama** - Default port 11434
+- **LM Studio** - Default port 1234
+- **llama.cpp server** - Default port 8080
+
+### Cloud APIs
+- **OpenAI API** - GPT-4, GPT-3.5 (requires API key)
 
 ### 1. Setup Environment
 
@@ -21,43 +69,67 @@ source /home/jhull/devel/venv/bin/activate
 ./benchmarks/scripts/setup_env.sh
 ```
 
-### 2. Configure Your Target
+### 2. Configure Your Target (Optional)
 
-Edit `benchmarks/config/targets.yaml` to add your cluster:
+See `benchmarks/config/targets.yaml` for pre-configured examples:
+- `gke-t4` - vLLM on NVIDIA T4 GPU
+- `tpu-v6e` - vLLM on Google TPU v6e
+- `ollama-local` - Local Ollama deployment
+- `lmstudio-local` - Local LM Studio
+- `openai-gpt4` - OpenAI API (requires API key)
 
+Add your own target:
 ```yaml
 targets:
-  my-cluster:
-    base_url: "http://$EXTERNAL_IP:8000"
-    model: "$MODEL_NAME"  # e.g., google/gemma-2b-it
-    max_tokens: $MAX_TOKENS  # e.g., 4096 for GPU, 2048 for TPU
+  my-deployment:
+    name: "My Custom Deployment"
+    base_url: "http://my-server.com:8000"
+    model: "meta-llama/Llama-3.1-8B-Instruct"
+    max_tokens: 8192
+    backend: "vLLM"
 ```
 
-Get your cluster IP:
+### 3. Examples for Different Providers
+
+**vLLM on GKE (TPU v6e):**
 ```bash
-# For GKE
-EXTERNAL_IP=$(kubectl get svc $SERVICE_NAME -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# Quick test
+./benchmarks/scripts/quick_test.sh http://35.214.154.17 "Qwen/Qwen2.5-3B-Instruct"
 
-# For TPU VM
-EXTERNAL_IP=$(gcloud compute tpus tpu-vm describe $TPU_NAME --zone $ZONE --project $PROJECT_ID --format='get(networkEndpoints[0].accessConfig[0].externalIp)')
-
-# Verify
-echo "Cluster IP: $EXTERNAL_IP"
+# Full benchmark
+python benchmarks/python/benchmark_async.py --target tpu-v6e --scenario latency_benchmark --html
 ```
 
-### 3. Quick Validation Test
-
+**Ollama (Local):**
 ```bash
-./benchmarks/scripts/quick_test.sh http://$EXTERNAL_IP:8000
+# Start Ollama and pull a model first: ollama pull llama3.2:3b
+
+# Quick test
+./benchmarks/scripts/quick_test.sh http://localhost:11434 "llama3.2:3b"
+
+# Full benchmark
+python benchmarks/python/benchmark_async.py --target ollama-local --scenario quick_validation
 ```
 
-### 4. Run Full Benchmark
+**LM Studio (Local):**
+```bash
+# Load a model in LM Studio and start the server first
 
+# Quick test
+./benchmarks/scripts/quick_test.sh http://localhost:1234 "local-model"
+
+# Full benchmark
+python benchmarks/python/benchmark_async.py --target lmstudio-local --num-requests 50 --concurrency 5
+```
+
+**Custom Endpoint:**
 ```bash
 python benchmarks/python/benchmark_async.py \
-    --target my-cluster \
-    --scenario latency_benchmark \
-    --output benchmarks/results/benchmark_$(date +%Y%m%d).json \
+    --base-url http://my-server:8000 \
+    --model "my-model" \
+    --num-requests 100 \
+    --concurrency 10 \
+    --output results/my_test.json \
     --html
 ```
 
@@ -74,7 +146,13 @@ python benchmarks/python/benchmark_async.py \
 **When to use**: Verify deployment is working after changes
 
 ```bash
-./benchmarks/scripts/quick_test.sh http://$EXTERNAL_IP:8000
+# Usage: ./quick_test.sh [base_url] [model_name]
+./benchmarks/scripts/quick_test.sh http://localhost:8000 "Qwen/Qwen2.5-3B-Instruct"
+
+# Examples for different providers
+./benchmarks/scripts/quick_test.sh http://localhost:11434 "llama3.2:3b"  # Ollama
+./benchmarks/scripts/quick_test.sh http://localhost:1234 "local-model"  # LM Studio
+./benchmarks/scripts/quick_test.sh http://35.214.154.17 "Qwen/Qwen2.5-3B-Instruct"  # vLLM on GKE
 ```
 
 ### 2. Apache Bench (`ab_benchmark.sh`)
@@ -88,8 +166,12 @@ python benchmarks/python/benchmark_async.py \
 **When to use**: Quick baseline throughput measurement
 
 ```bash
-./benchmarks/scripts/ab_benchmark.sh http://$EXTERNAL_IP:8000 100 10
-# 100 requests, concurrency 10
+# Usage: ./ab_benchmark.sh [base_url] [num_requests] [concurrency] [model_name]
+./benchmarks/scripts/ab_benchmark.sh http://localhost:8000 100 10 "Qwen/Qwen2.5-3B-Instruct"
+
+# Examples
+./benchmarks/scripts/ab_benchmark.sh http://localhost:11434 50 5 "llama3.2:3b"  # Ollama
+./benchmarks/scripts/ab_benchmark.sh http://35.214.154.17 200 20  # Uses default model
 ```
 
 ### 3. Async Python Benchmark (`benchmark_async.py`)
@@ -164,6 +246,101 @@ python benchmarks/python/benchmark_async.py \
     --target my-cluster \
     --scenario quick_validation
 ```
+
+## Multi-Model Benchmarking
+
+### Overview
+
+The benchmark suite supports testing multiple models sequentially to compare performance characteristics across different model sizes and architectures.
+
+### Configuration
+
+Define supported models for each target in `benchmarks/config/targets.yaml`:
+
+```yaml
+targets:
+  tpu-v6e:
+    name: "TPU v6e (vLLM)"
+    base_url: "http://35.214.154.17"
+    model: "Qwen/Qwen2.5-3B-Instruct"  # Default model
+    supported_models:
+      - "Qwen/Qwen2.5-3B-Instruct"
+      - "microsoft/Phi-3-mini-4k-instruct"
+      - "mistralai/Mistral-7B-Instruct-v0.3"
+      - "google/gemma-2-9b-it"
+```
+
+### Test All Models on a Target
+
+Use the `--all-models` flag to benchmark all supported_models:
+
+```bash
+# Test all models defined for tpu-v6e target
+python benchmarks/python/benchmark_async.py \
+    --target tpu-v6e \
+    --scenario latency_benchmark \
+    --all-models \
+    --output results/multi_model.json \
+    --html
+
+# Or use the convenience script
+./benchmarks/scripts/compare_models.sh tpu-v6e latency_benchmark
+```
+
+### Output
+
+Multi-model benchmarks generate:
+1. **Individual reports** - One JSON file per model tested
+   - `results/multi_model_Qwen_Qwen2.5-3B-Instruct.json`
+   - `results/multi_model_microsoft_Phi-3-mini-4k-instruct.json`
+   - etc.
+
+2. **Comparison report** - Combined analysis
+   - `results/multi_model_comparison.json` - JSON with all results
+   - `results/multi_model_comparison.html` - HTML table comparing metrics
+
+### HTML Comparison Report
+
+The HTML comparison report includes:
+- **Side-by-side comparison** of all models tested
+- **Key metrics**: TTFT (p50, p95), TPOT (p50, p95), throughput
+- **Error rates** and MLPerf compliance status
+- **Visual indicators** for pass/fail criteria
+
+### Example Use Cases
+
+**Compare model sizes on same hardware:**
+```bash
+# Test 2B, 3B, 7B, and 9B models on TPU
+./benchmarks/scripts/compare_models.sh tpu-v6e latency_benchmark
+```
+
+**Test model compatibility:**
+```bash
+# Quick validation that all models work
+python benchmarks/python/benchmark_async.py \
+    --target gke-t4 \
+    --scenario quick_validation \
+    --all-models
+```
+
+**Find optimal model for workload:**
+```bash
+# Compare throughput across models
+python benchmarks/python/benchmark_async.py \
+    --target tpu-v6e \
+    --scenario throughput_benchmark \
+    --all-models \
+    --output results/model_selection.json \
+    --html
+```
+
+### Notes
+
+- Models must be **deployed individually** (only one model per vLLM deployment)
+- To test a different model, **redeploy vLLM** with the new model
+- For llm-d Pattern 2+, multiple models can be deployed simultaneously
+- Multi-model testing is **sequential** (not parallel) within a single target
 
 ## Understanding Metrics
 

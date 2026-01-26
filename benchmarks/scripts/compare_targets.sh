@@ -50,10 +50,9 @@ if [ -n "$TPU_IP" ]; then
     echo -e "${BLUE}Testing TPU v6e...${NC}"
     echo ""
 
-    # Temporarily override TPU URL
+    # Use tpu-v6e target (gets model from config)
     python3 "$BENCHMARK_DIR/python/benchmark_async.py" \
-        --base-url "http://$TPU_IP:8000" \
-        --model "google/gemma-2b-it" \
+        --target tpu-v6e \
         --scenario "$TEST_SCENARIO" \
         --output "$OUTPUT_DIR/tpu_results.json"
 
