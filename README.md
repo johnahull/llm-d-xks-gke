@@ -110,6 +110,24 @@ cp huggingface-token-secret.yaml.template huggingface-token-secret.yaml
 kubectl apply -f huggingface-token-secret.yaml
 ```
 
+### Setup llm-d
+
+The deployment uses llm-d Helm charts with custom pattern configurations:
+
+```bash
+# 1. Clone llm-d (if not already done)
+git clone https://github.com/llm-d/llm-d.git
+
+# 2. Copy custom configurations
+cp helm-configs/pattern-overrides/*.yaml \
+   llm-d/guides/inference-scheduling/ms-inference-scheduling/
+
+cp helm-configs/helmfile.yaml.gotmpl \
+   llm-d/guides/inference-scheduling/
+```
+
+See [helm-configs/README.md](helm-configs/README.md) for detailed setup instructions.
+
 ### Deploy Pattern 3 (Recommended)
 
 **GPU Deployment**:

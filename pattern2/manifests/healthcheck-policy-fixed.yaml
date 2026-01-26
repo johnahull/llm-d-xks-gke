@@ -1,0 +1,44 @@
+---
+# HealthCheckPolicy for qwen-pool InferencePool
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: qwen-pool-healthcheck
+  namespace: llm-d-inference-scheduling
+spec:
+  targetRef:
+    group: "inference.networking.k8s.io"
+    kind: InferencePool
+    name: qwen-pool
+  default:
+    timeoutSec: 15
+    checkIntervalSec: 15
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /health
+        port: 8000
+---
+# HealthCheckPolicy for phi-pool InferencePool
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: phi-pool-healthcheck
+  namespace: llm-d-inference-scheduling
+spec:
+  targetRef:
+    group: "inference.networking.k8s.io"
+    kind: InferencePool
+    name: phi-pool
+  default:
+    timeoutSec: 15
+    checkIntervalSec: 15
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /health
+        port: 8000

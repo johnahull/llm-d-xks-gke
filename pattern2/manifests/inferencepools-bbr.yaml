@@ -1,0 +1,40 @@
+---
+# InferencePool for Qwen model
+apiVersion: inference.networking.k8s.io/v1
+kind: InferencePool
+metadata:
+  name: qwen-pool
+  namespace: llm-d-inference-scheduling
+spec:
+  endpointPickerRef:
+    failureMode: FailClose
+    group: ""
+    kind: Service
+    name: gaie-pattern1-epp
+    port:
+      number: 9002
+  selector:
+    matchLabels:
+      model-instance: qwen  # Simple selector, no slashes
+  targetPorts:
+  - number: 8000
+---
+# InferencePool for Phi-3 model
+apiVersion: inference.networking.k8s.io/v1
+kind: InferencePool
+metadata:
+  name: phi-pool
+  namespace: llm-d-inference-scheduling
+spec:
+  endpointPickerRef:
+    failureMode: FailClose
+    group: ""
+    kind: Service
+    name: gaie-pattern1-epp
+    port:
+      number: 9002
+  selector:
+    matchLabels:
+      model-instance: phi  # Simple selector, no slashes
+  targetPorts:
+  - number: 8000

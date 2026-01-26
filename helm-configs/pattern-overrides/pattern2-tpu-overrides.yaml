@@ -1,0 +1,138 @@
+# Pattern 2: Phi-3-mini Multi-Model Configuration on TPU v6e
+
+# Model Configuration
+modelArtifacts:
+  uri: "hf://microsoft/Phi-3-mini-4k-instruct"
+  name: "microsoft/Phi-3-mini-4k-instruct"
+  size: 20Gi  # 3.8B model
+  authSecretName: "huggingface-token"
+
+# Accelerator Type
+accelerator:
+  type: google  # Google Cloud TPU
+
+# Routing Configuration
+routing:
+  proxy:
+    enabled: false
+    targetPort: 8000
+
+# Decode Configuration (vLLM inference on TPU)
+decode:
+  create: true
+  replicas: 1  # Pattern 2: Single replica per model
+
+  # Pod labels for multi-model discovery
+  podLabels:
+    llm-d.ai/inferenceServing: "true"
+    llm-d.ai/deployment: "multi-model"
+    llm-d.ai/model: "microsoft/Phi-3-mini-4k-instruct"
+
+  # TPU Parallelism (MANDATORY for GKE Warden)
+  parallelism:
+    tensor: 4  # 4-way tensor parallelism (required for 2x2 topology)
+
+  # TPU-specific node selector
+  extraConfig:
+    nodeSelector:
+      cloud.google.com/gke-tpu-topology: "2x2"  # 4-chip node
+      cloud.google.com/gke-tpu-accelerator: "tpu-v6e-slice"
+
+  # Monitoring
+  monitoring:
+    podmonitor:
+      enabled: true
+      portName: "vllm"
+      path: "/metrics"
+      interval: "30s"
+
+  # vLLM Container Configuration
+  containers:
+  - name: "vllm"
+    image: "vllm/vllm-tpu:v0.11.1"  # Official vLLM TPU image
+    modelCommand: vllmServe
+    args:
+      - "--max-model-len=2048"  # Conservative for 3.8B model on 4-chip TPU
+      - "--disable-uvicorn-access-log"
+      - "--dtype=half"  # FP16 for efficiency
+    ports:
+      - containerPort: 8000
+        name: vllm
+        protocol: TCP
+
+    # TPU Resource Allocation (MUST request all 4 chips for 2x2 topology)
+    resources:
+      limits:
+        google.com/tpu: "4"  # GKE Warden enforces requesting all chips
+      requests:
+        google.com/tpu: "4"
+
+    # TPU Environment Variables
+    env:
+      - name: PJRT_DEVICE
+        value: "TPU"
+      - name: TPU_CHIPS_PER_HOST_BOUNDS
+        value: "2,2,1"  # 2x2 topology for 4 chips
+      - name: TPU_HOST_BOUNDS
+        value: "1,1,1"  # Single host
+      - name: TPU_NUM_DEVICES
+        value: "4"  # 4 TPU chips
+      - name: TPU_WORKER_HOSTNAMES
+        valueFrom:
+          fieldRef:
+            fieldPath: status.podIP
+      - name: TPU_WORKER_ID
+        value: "0"
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: huggingface-token
+            key: token
+
+    # Volume Mounts
+    mountModelVolume: true
+    volumeMounts:
+    - name: metrics-volume
+      mountPath: /.config
+    - name: torch-compile-cache
+      mountPath: /.cache
+
+    # Health Checks (Extended for TPU startup + XLA compilation)
+    startupProbe:
+      httpGet:
+        path: /v1/models
+        port: vllm
+      initialDelaySeconds: 15
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 60  # Allow up to 30 minutes for TPU init + model download + XLA
+
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: vllm
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+    readinessProbe:
+      httpGet:
+        path: /v1/models
+        port: vllm
+      periodSeconds: 5
+      timeoutSeconds: 2
+      failureThreshold: 3
+
+  # Volumes
+  volumes:
+  - name: metrics-volume
+    emptyDir: {}
+  - name: torch-compile-cache
+    emptyDir: {}
+
+# Prefill/Decode Disaggregation (disabled for Pattern 2)
+prefill:
+  create: false
+
+# Multi-node configuration (disabled for Pattern 2)
+multinode: false

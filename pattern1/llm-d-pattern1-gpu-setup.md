@@ -267,30 +267,7 @@ kubectl get gateway infra-pattern1-inference-gateway -n $NAMESPACE -o wide
 
 **Create HTTPRoute**:
 ```bash
-cat > /tmp/httproute-pattern1.yaml <<'EOF'
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: llm-d-pattern1-inference-scheduling
-spec:
-  parentRefs:
-  - group: gateway.networking.k8s.io
-    kind: Gateway
-    name: infra-pattern1-inference-gateway
-  rules:
-    - backendRefs:
-      - group: inference.networking.k8s.io
-        kind: InferencePool
-        name: gaie-pattern1
-        port: 54321
-        weight: 1
-      matches:
-      - path:
-          type: PathPrefix
-          value: /
-EOF
-
-kubectl apply -f /tmp/httproute-pattern1.yaml -n $NAMESPACE
+kubectl apply -f pattern1/manifests/httproute-pattern1.yaml -n $NAMESPACE
 
 # Verify HTTPRoute
 kubectl get httproute -n $NAMESPACE
@@ -846,30 +823,7 @@ The HTTPRoute connects the Gateway to the intelligent scheduler via InferencePoo
 
 **Create HTTPRoute**:
 ```bash
-cat > /tmp/httproute-pattern1.yaml <<'EOF'
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: llm-d-pattern1-inference-scheduling
-spec:
-  parentRefs:
-  - group: gateway.networking.k8s.io
-    kind: Gateway
-    name: infra-pattern1-inference-gateway
-  rules:
-    - backendRefs:
-      - group: inference.networking.k8s.io
-        kind: InferencePool
-        name: gaie-pattern1
-        port: 54321  # InferencePool service port (not vLLM target port 8000)
-        weight: 1
-      matches:
-      - path:
-          type: PathPrefix
-          value: /
-EOF
-
-kubectl apply -f /tmp/httproute-pattern1.yaml -n $NAMESPACE
+kubectl apply -f pattern1/manifests/httproute-pattern1.yaml -n $NAMESPACE
 
 # Verify HTTPRoute created
 kubectl get httproute -n $NAMESPACE
