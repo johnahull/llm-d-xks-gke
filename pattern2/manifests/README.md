@@ -1,14 +1,29 @@
-# Pattern 2 BBR Multi-Model Routing Manifests
+# Pattern 2 Multi-Model Routing Manifests
 
-This directory contains Kubernetes manifests for deploying Pattern 2 with Body-Based Router (BBR) model-aware routing.
+This directory contains Kubernetes manifests for deploying Pattern 2 multi-model serving with intelligent routing.
 
 ## Overview
 
-These manifests implement intelligent multi-model routing that achieved **100% routing accuracy** in benchmarks (see [PATTERN2_BBR_BENCHMARK_RESULTS.md](../PATTERN2_BBR_BENCHMARK_RESULTS.md)).
+Pattern 2 supports two routing approaches:
+
+1. **Auto-Discovery (GPU)**: Single InferencePool with automatic model discovery
+2. **BBR Header-Based Routing (TPU)**: Separate InferencePools with Body-Based Router
+
+Both approaches achieved **100% routing accuracy** in benchmarks.
 
 ## Files
 
-### `inferencepools-bbr.yaml`
+### Auto-Discovery Approach (GPU)
+
+#### `httproute-unified.yaml`
+HTTPRoute for GPU multi-model deployment with auto-discovery:
+- Routes all traffic to single InferencePool (`gaie-pattern1`)
+- Scheduler auto-discovers available models from backends
+- Simple unified routing approach
+
+### BBR Header-Based Routing (TPU)
+
+#### `inferencepools-bbr.yaml`
 Defines separate InferencePools for each model:
 - **qwen-pool**: Routes to Qwen/Qwen2.5-3B-Instruct pods
 - **phi-pool**: Routes to microsoft/Phi-3-mini-4k-instruct pods
@@ -28,7 +43,18 @@ Defines GKE HealthCheckPolicies for each InferencePool:
 
 ## Deployment
 
-After deploying models with helmfile, apply these manifests:
+### For GPU (Auto-Discovery Approach)
+
+After deploying models with helmfile:
+
+```bash
+# Apply unified HTTPRoute
+kubectl apply -f pattern2/manifests/httproute-unified.yaml -n llm-d
+```
+
+### For TPU (BBR Header-Based Routing)
+
+After deploying models with helmfile:
 
 ```bash
 # Apply InferencePools
@@ -43,6 +69,20 @@ kubectl apply -f pattern2/manifests/healthcheck-policy-fixed.yaml -n llm-d-infer
 
 ## Architecture
 
+### Auto-Discovery (GPU)
+```
+Client Request with model field
+    ↓
+Gateway → HTTPRoute (unified)
+    ↓
+InferencePool (gaie-pattern1)
+    ↓
+Scheduler (auto-discovers models from /v1/models)
+    ↓
+Routes to correct vLLM backend
+```
+
+### BBR Header-Based Routing (TPU)
 ```
 Client Request with model field
     ↓

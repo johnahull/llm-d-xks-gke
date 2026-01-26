@@ -318,34 +318,11 @@ kubectl get httproute -n llm-d -o yaml
 If HTTPRoute needs updating (e.g., from old weighted routing):
 
 ```bash
-cat > /tmp/httproute-unified.yaml <<'EOF'
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: llm-d-multi-model-inference
-  namespace: llm-d
-spec:
-  parentRefs:
-  - group: gateway.networking.k8s.io
-    kind: Gateway
-    name: infra-pattern1-inference-gateway
-  rules:
-    - backendRefs:
-      - group: inference.networking.k8s.io
-        kind: InferencePool
-        name: gaie-pattern1
-        port: 54321
-      matches:
-      - path:
-          type: PathPrefix
-          value: /
-EOF
-
 # Delete old HTTPRoute (if exists)
 kubectl delete httproute llm-d-pattern1-inference-scheduling -n llm-d 2>/dev/null || true
 
 # Apply unified HTTPRoute
-kubectl apply -f /tmp/httproute-unified.yaml -n llm-d
+kubectl apply -f pattern2/manifests/httproute-unified.yaml -n llm-d
 ```
 
 **How this works**:
@@ -907,7 +884,7 @@ RELEASE_NAME_POSTFIX=pattern2 helmfile -e gke -n llm-d destroy
 
 # Restore single-model HTTPRoute
 kubectl delete httproute llm-d-multi-model-inference -n llm-d
-kubectl apply -f /tmp/httproute-pattern1.yaml -n llm-d
+kubectl apply -f pattern1/manifests/httproute-pattern1.yaml -n llm-d
 
 # Scale GPU nodes back to 1
 gcloud container clusters resize nvidia-test-cluster \
