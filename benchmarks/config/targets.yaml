@@ -27,6 +27,25 @@ targets:
       - "mistralai/Mistral-7B-Instruct-v0.3"
       - "meta-llama/Llama-3.1-8B-Instruct"
 
+  llm-d-pattern2-gpu:
+    name: "llm-d Pattern 2 GPU Multi-Model (2x T4)"
+    base_url: "http://35.209.92.117"  # llm-d Pattern 2 Gateway IP
+    model: "microsoft/Phi-3-mini-4k-instruct"
+    max_tokens: 2048
+    accelerator: "2x NVIDIA T4 GPU"
+    gpu_memory: "14.58 GiB per GPU"
+    backend: "vLLM + XFormers"
+    replicas: 2  # 1 replica per model
+    prefix_caching: false
+    gpu_memory_utilization: 0.85
+    routing: "Unified Scheduler (model-based routing with dynamic discovery)"
+    expected_concurrency: 40
+    zone: "us-central1-a"
+    notes: "Pattern 2 Multi-Model deployment with unified EPP scheduler"
+    supported_models:
+      - "microsoft/Phi-3-mini-4k-instruct"  # Pattern 2 native model
+      - "google/gemma-2b-it"  # Pattern 1 model via unified routing
+
   llm-d-pattern3-gpu:
     name: "llm-d Pattern 3 GPU (3x T4)"
     base_url: "http://35.208.175.15"  # llm-d Gateway IP
