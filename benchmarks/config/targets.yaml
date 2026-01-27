@@ -81,6 +81,22 @@ targets:
       - "mistralai/Mistral-7B-Instruct-v0.3"
       - "google/gemma-2-9b-it"
 
+  llm-d-pattern3-tpu:
+    name: "llm-d Pattern 3 TPU (3x TPU v6e)"
+    base_url: "http://35.214.223.251"  # llm-d Pattern 3 Gateway IP
+    model: "Qwen/Qwen2.5-3B-Instruct"
+    max_tokens: 2048
+    accelerator: "3x TPU v6e (12 chips total)"
+    backend: "vLLM + JAX/XLA"
+    replicas: 3
+    prefix_caching: true
+    routing: "Intelligent (prefix-cache-scorer weight 3.0)"
+    expected_concurrency: 150
+    zone: "europe-west4-a"
+    notes: "Pattern 3 N/S-Caching Scale-Out with intelligent routing on TPU"
+    supported_models:
+      - "Qwen/Qwen2.5-3B-Instruct"
+
   # === Local LLM Servers ===
   ollama-local:
     name: "Ollama (Local)"
