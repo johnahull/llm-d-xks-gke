@@ -1,6 +1,8 @@
-# Pattern 3 GPU Quick Start Guide
+# Pattern 3 Quick Start Guide
 
-## Current Deployment Status ✅
+## Current Deployment Status
+
+### GPU Deployment (nvidia-test-cluster) ✅
 
 - **Gateway**: http://35.208.175.15
 - **Namespace**: `llm-d`
@@ -9,16 +11,28 @@
 - **GPU Memory**: 0.75 utilization
 - **Prefix Caching**: Enabled
 
+### TPU Deployment (tpu-test-cluster) ✨ NEW
+
+- **Gateway**: http://35.214.223.251
+- **Namespace**: `llm-d-inference-scheduling`
+- **Model**: Qwen/Qwen2.5-3B-Instruct
+- **Replicas**: 3 (12 TPU v6e chips total)
+- **TPU Topology**: 2×2 (4 chips per replica)
+- **Prefix Caching**: Enabled
+- **Deployment Date**: January 27, 2026
+
 ## Quick Commands
 
-### 1. Test Basic Inference
+### GPU Deployment Commands
+
+#### 1. Test Basic Inference (GPU)
 ```bash
 curl -X POST http://35.208.175.15/v1/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"Qwen/Qwen2.5-3B-Instruct","prompt":"What is 2+2?","max_tokens":20}'
 ```
 
-### 2. Run Comprehensive Benchmark
+#### 2. Run GPU Benchmark
 ```bash
 cd /home/jhull/devel/rhaiis-test
 ./benchmarks/scripts/pattern3_comprehensive_benchmark.sh
@@ -31,7 +45,104 @@ cd /home/jhull/devel/rhaiis-test
 - ✓ Throughput (50 concurrent requests → ~16-17 req/s)
 - ✓ Latency profile (P50/P95/P99)
 
-### 3. Monitor Deployment
+### TPU Deployment Commands ✨ NEW
+
+#### 1. Test Basic Inference (TPU)
+```bash
+curl -X POST http://35.214.223.251/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"Qwen/Qwen2.5-3B-Instruct","prompt":"What is 2+2?","max_tokens":20}'
+```
+
+#### 2. Run TPU Benchmark
+```bash
+# Quick validation (10 requests)
+python3 benchmarks/python/benchmark_async.py \
+  --target llm-d-pattern3-tpu \
+  --scenario quick_validation
+
+# Comprehensive latency benchmark (100 requests)
+python3 benchmarks/python/benchmark_async.py \
+  --target llm-d-pattern3-tpu \
+  --scenario latency_benchmark \
+  --output results/pattern3_tpu_$(date +%Y%m%d).json \
+  --html
+
+# Or use shell script
+bash benchmarks/scripts/quick_test.sh http://35.214.223.251 "Qwen/Qwen2.5-3B-Instruct"
+```
+
+**Initial Results:**
+- Success rate: 100%
+- TTFT p95: 513ms ✓ MLPerf compliant
+- Throughput: 311.76 tokens/sec
+- Request rate: 2.35 req/s
+
+#### 3. Monitor TPU Deployment
+
+**Watch pod status:**
+```bash
+kubectl config use-context gke_ecoeng-llmd_europe-west4-a_tpu-test-cluster
+watch -n 2 'kubectl get pods -n llm-d-inference-scheduling -l llm-d.ai/model=random_model'
+```
+
+**Check TPU nodes:**
+```bash
+kubectl get nodes -o wide | grep tpu
+```
+
+**View vLLM logs:**
+```bash
+kubectl logs -n llm-d-inference-scheduling -f \
+  $(kubectl get pods -n llm-d-inference-scheduling -l llm-d.ai/model=random_model -o name | head -1)
+```
+
+**Check EPP routing decisions:**
+```bash
+kubectl logs -n llm-d-inference-scheduling -f deployment/gaie-pattern3-epp | grep -E "prefix-cache|score"
+```
+
+**View vLLM metrics:**
+```bash
+POD_NAME=$(kubectl get pods -n llm-d-inference-scheduling -l llm-d.ai/model=random_model -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n llm-d-inference-scheduling ${POD_NAME} -c vllm -- curl -s localhost:8000/metrics | grep -E "vllm:kv_cache|vllm:num_requests"
+```
+
+#### 4. Scale TPU Deployment
+
+**Scale to zero (cost savings ~$10,950/month):**
+```bash
+kubectl scale deployment ms-pattern3-llm-d-modelservice-decode --replicas=0 -n llm-d-inference-scheduling
+
+gcloud container clusters resize tpu-test-cluster \
+  --node-pool tpu-v6e-pool \
+  --num-nodes 0 \
+  --zone europe-west4-a \
+  --project ecoeng-llmd \
+  --quiet
+```
+
+**Resume TPU deployment:**
+```bash
+# Scale TPU nodes back up
+gcloud container clusters resize tpu-test-cluster \
+  --node-pool tpu-v6e-pool \
+  --num-nodes 3 \
+  --zone europe-west4-a \
+  --project ecoeng-llmd \
+  --quiet
+
+# Wait for nodes to be ready (~5-10 minutes)
+kubectl get nodes -w | grep tpu
+
+# Scale deployment back up
+kubectl scale deployment ms-pattern3-llm-d-modelservice-decode --replicas=3 -n llm-d-inference-scheduling
+
+# Wait for pods to be ready (~15-20 minutes including XLA compilation)
+kubectl get pods -n llm-d-inference-scheduling -l llm-d.ai/model=random_model -w
+```
+
+### 3. Monitor Deployment (GPU)
 
 **Watch pod status:**
 ```bash

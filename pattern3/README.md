@@ -37,7 +37,9 @@ Internet → GKE Gateway → Inference Scheduler (EPP)
 
 ## Deployment Configuration
 
-### Current Setup (GPU)
+### Current Deployments
+
+#### GPU Deployment (nvidia-test-cluster)
 
 | Component | Count | Accelerator | Location | Cost/month |
 |-----------|-------|-------------|----------|------------|
@@ -47,6 +49,21 @@ Internet → GKE Gateway → Inference Scheduler (EPP)
 | **EPP** | 1 | - | us-central1-a | ~$10 |
 
 **Total:** ~$485/month (GPU deployment)
+**Gateway IP:** http://35.208.175.15
+
+#### TPU Deployment (tpu-test-cluster) ✨ NEW
+
+| Component | Count | Accelerator | Location | Cost/month |
+|-----------|-------|-------------|----------|------------|
+| **vLLM Replicas** | 3 | TPU v6e (4 chips each) | europe-west4-a | ~$10,950 |
+| **Model** | Qwen/Qwen2.5-3B-Instruct | 3B params | - | - |
+| **Gateway** | 1 | - | europe-west4-a | ~$25 |
+| **EPP** | 1 | - | europe-west4-a | ~$10 |
+
+**Total:** ~$10,985/month (TPU deployment)
+**Total TPU Chips:** 12 (3 nodes × 4 chips)
+**Gateway IP:** http://35.214.223.251
+**Deployment Date:** January 27, 2026
 
 ### Configuration Parameters
 
@@ -69,17 +86,33 @@ scoring_plugins:
 
 ## Performance Benchmarks
 
-### Throughput Results
+### GPU Results (3× NVIDIA T4)
 
 **Without Prefix Caching:**
 - Throughput: ~12-13 req/s
 - Latency p95: ~800ms
 - Cache hit rate: 0%
 
-**With Prefix Caching (Pattern 3):**
+**With Prefix Caching (Pattern 3 GPU):**
 - Throughput: **16-17 req/s** (+30% improvement)
 - Latency p95: ~600ms (-25% reduction)
 - Cache hit rate: 60-70% (with shared system prompts)
+
+### TPU Results (3× TPU v6e) ✨ NEW
+
+**Initial Benchmark Results (January 27, 2026):**
+- **Success rate**: 100% (100/100 requests)
+- **TTFT p95**: 513ms ✓ MLPerf Standard compliant
+- **TPOT p95**: 0ms ✓ MLPerf Standard compliant
+- **Throughput**: 311.76 tokens/sec
+- **Request rate**: 2.35 req/s (single-threaded benchmark)
+- **End-to-end latency p95**: 513ms
+
+**Performance Characteristics:**
+- XLA precompilation during startup: ~5-7 minutes per pod
+- First inference triggers final XLA compilation
+- Subsequent requests benefit from compiled graphs
+- KV cache capacity: 1.55M tokens per replica (4.6M total across 3 replicas)
 
 ### Load Distribution
 

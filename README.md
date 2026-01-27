@@ -206,7 +206,8 @@ All targets are configured in [`benchmarks/config/targets.yaml`](benchmarks/conf
 
 - `llm-d-pattern1-gpu` - Pattern 1 GPU baseline
 - `llm-d-pattern3-gpu` - Pattern 3 GPU (3× T4)
-- `tpu-v6e` - TPU v6e deployment
+- `llm-d-pattern3-tpu` - Pattern 3 TPU (3× TPU v6e) - **NEW**
+- `tpu-v6e` - TPU v6e single replica
 - Local targets: `ollama-local`, `lmstudio-local`, `llamacpp-local`
 
 ## Architecture
