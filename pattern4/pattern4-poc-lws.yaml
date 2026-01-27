@@ -1,0 +1,208 @@
+# Pattern 4 PoC: MoE with DP/EP on 16 GPUs
+# Hardware: 2× A3-highgpu-8g VMs (16 GPUs total)
+# Model: Mixtral-8x7B-Instruct
+# Configuration: DP=2, EP=8
+
+apiVersion: leaderworkerset.x-k8s.io/v1
+kind: LeaderWorkerSet
+metadata:
+  name: pattern4-moe-poc
+  namespace: llm-d-inference-scheduling
+spec:
+  replicas: 2  # Data Parallel groups (DP=2)
+  leaderWorkerTemplate:
+    size: 8    # 1 leader + 7 workers = 8 GPUs per DP group (EP=8)
+    
+    # Network configuration for multi-pod coordination
+    restartPolicy: Default
+    
+    leaderTemplate:
+      metadata:
+        labels:
+          app: pattern4-moe
+          role: leader
+          llm-d.ai/inferenceServing: "true"
+      spec:
+        # Node affinity to ensure GPUDirect-capable nodes
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: cloud.google.com/gke-accelerator
+                  operator: In
+                  values:
+                  - nvidia-h100-80gb
+                  - nvidia-a100-80gb
+        
+        # Host network for NCCL/RDMA performance
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+        
+        containers:
+        - name: vllm-leader
+          image: vllm/vllm-openai:v0.6.3
+          command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+          args:
+            # Model configuration
+            - "--model=mistralai/Mixtral-8x7B-Instruct-v0.1"
+            - "--served-model-name=Mixtral-8x7B-Instruct"
+            
+            # Parallelism configuration (EP=8)
+            - "--tensor-parallel-size=8"
+            - "--pipeline-parallel-size=1"
+            
+            # Memory and performance tuning
+            - "--max-model-len=4096"
+            - "--gpu-memory-utilization=0.90"
+            - "--max-num-seqs=128"
+            - "--enable-prefix-caching"
+            
+            # Network configuration
+            - "--port=8000"
+            - "--host=0.0.0.0"
+            
+            # Distributed configuration
+            - "--distributed-executor-backend=ray"
+          
+          env:
+          # Ray cluster coordination
+          - name: RAY_ADDRESS
+            value: "auto"
+          - name: RAY_CLUSTER_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          
+          # NCCL configuration for multi-node
+          - name: NCCL_DEBUG
+            value: "INFO"
+          - name: NCCL_IB_DISABLE
+            value: "0"  # Enable InfiniBand/RoCE
+          - name: NCCL_NET_GDR_LEVEL
+            value: "5"  # GPUDirect RDMA
+          - name: NCCL_SOCKET_IFNAME
+            value: "eth0"
+          - name: NCCL_IB_HCA
+            value: "mlx5_0:1,mlx5_1:1"  # Multi-rail
+          
+          # HuggingFace token
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: huggingface-token
+                key: HF_TOKEN
+          
+          ports:
+          - containerPort: 8000
+            name: http
+          - containerPort: 6379
+            name: ray-gcs
+          
+          resources:
+            limits:
+              nvidia.com/gpu: 1  # Leader gets 1 GPU
+            requests:
+              nvidia.com/gpu: 1
+              memory: 100Gi
+              cpu: 16
+          
+          volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+          - name: model-cache
+            mountPath: /model-cache
+        
+        volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 80Gi  # Shared memory for NCCL
+        - name: model-cache
+          emptyDir:
+            sizeLimit: 100Gi
+    
+    workerTemplate:
+      metadata:
+        labels:
+          app: pattern4-moe
+          role: worker
+      spec:
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+        
+        containers:
+        - name: vllm-worker
+          image: vllm/vllm-openai:v0.6.3
+          command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+          args:
+            # Same as leader - workers auto-discover via Ray
+            - "--model=mistralai/Mixtral-8x7B-Instruct-v0.1"
+            - "--tensor-parallel-size=8"
+            - "--pipeline-parallel-size=1"
+            - "--max-model-len=4096"
+            - "--gpu-memory-utilization=0.90"
+            - "--distributed-executor-backend=ray"
+          
+          env:
+          # Ray worker connects to leader
+          - name: RAY_ADDRESS
+            value: "$(LWS_LEADER_ADDRESS):6379"
+          
+          # NCCL configuration (same as leader)
+          - name: NCCL_DEBUG
+            value: "INFO"
+          - name: NCCL_IB_DISABLE
+            value: "0"
+          - name: NCCL_NET_GDR_LEVEL
+            value: "5"
+          - name: NCCL_SOCKET_IFNAME
+            value: "eth0"
+          - name: NCCL_IB_HCA
+            value: "mlx5_0:1,mlx5_1:1"
+          
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: huggingface-token
+                key: HF_TOKEN
+          
+          resources:
+            limits:
+              nvidia.com/gpu: 1  # Each worker gets 1 GPU
+            requests:
+              nvidia.com/gpu: 1
+              memory: 100Gi
+              cpu: 16
+          
+          volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+          - name: model-cache
+            mountPath: /model-cache
+        
+        volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 80Gi
+        - name: model-cache
+          emptyDir:
+            sizeLimit: 100Gi
+
+---
+# Service for accessing the MoE deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: pattern4-moe-service
+  namespace: llm-d-inference-scheduling
+spec:
+  selector:
+    app: pattern4-moe
+    role: leader
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+  type: LoadBalancer
