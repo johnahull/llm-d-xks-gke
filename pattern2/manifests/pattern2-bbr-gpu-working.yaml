@@ -1,0 +1,118 @@
+---
+# Pattern 2 GPU BBR Multi-Model Configuration
+# Uses BBR (Body Based Router) to inject X-Gateway-Base-Model-Name header for routing
+#
+# Architecture:
+# 1. Client sends request with {"model": "microsoft/Phi-3-mini-4k-instruct", ...}
+# 2. BBR extracts model name and injects header: X-Gateway-Base-Model-Name
+# 3. HTTPRoute matches header value and routes to correct InferencePool
+# 4. Each InferencePool has one backend pod (single-model selector)
+# 5. EPP picks the endpoint (only one available per pool)
+#
+# This achieves 100% routing accuracy like Pattern 2 TPU
+
+---
+# InferencePool for Phi-3-mini
+apiVersion: inference.networking.k8s.io/v1
+kind: InferencePool
+metadata:
+  name: phi-pool
+  namespace: llm-d
+  labels:
+    llm-d.ai/pattern: pattern2
+    llm-d.ai/model: phi-3-mini
+spec:
+  endpointPickerRef:
+    failureMode: FailClose
+    group: ""
+    kind: Service
+    name: gaie-pattern2-epp
+    port:
+      number: 9002
+  selector:
+    matchLabels:
+      llm-d.ai/model-name: phi-3-mini  # Only select Phi-3-mini pod
+  targetPorts:
+  - number: 8000
+
+---
+# InferencePool for Gemma-2B
+apiVersion: inference.networking.k8s.io/v1
+kind: InferencePool
+metadata:
+  name: gemma-pool
+  namespace: llm-d
+  labels:
+    llm-d.ai/pattern: pattern2
+    llm-d.ai/model: gemma-2b
+spec:
+  endpointPickerRef:
+    failureMode: FailClose
+    group: ""
+    kind: Service
+    name: gaie-pattern2-epp
+    port:
+      number: 9002
+  selector:
+    matchLabels:
+      llm-d.ai/model-name: gemma-2b  # Only select Gemma-2B pod
+  targetPorts:
+  - number: 8000
+
+---
+# HTTPRoute for Phi-3-mini - matches BBR-injected header
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: phi-model-route
+  namespace: llm-d
+  labels:
+    llm-d.ai/pattern: pattern2
+    llm-d.ai/routing-method: bbr
+spec:
+  parentRefs:
+  - name: infra-pattern2-inference-gateway
+    namespace: llm-d
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1/
+      headers:
+      - type: Exact
+        name: X-Gateway-Base-Model-Name
+        value: "microsoft/Phi-3-mini-4k-instruct"  # Slashes OK in header value
+    backendRefs:
+    - group: inference.networking.k8s.io
+      kind: InferencePool
+      name: phi-pool
+      weight: 100
+
+---
+# HTTPRoute for Gemma-2B - matches BBR-injected header
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gemma-model-route
+  namespace: llm-d
+  labels:
+    llm-d.ai/pattern: pattern2
+    llm-d.ai/routing-method: bbr
+spec:
+  parentRefs:
+  - name: infra-pattern2-inference-gateway
+    namespace: llm-d
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1/
+      headers:
+      - type: Exact
+        name: X-Gateway-Base-Model-Name
+        value: "google/gemma-2b-it"  # Slashes OK in header value
+    backendRefs:
+    - group: inference.networking.k8s.io
+      kind: InferencePool
+      name: gemma-pool
+      weight: 100

@@ -1,0 +1,96 @@
+---
+# BBR (Body Based Router) Deployment for Pattern 2 GPU
+# Extracts "model" field from request body and injects X-Gateway-Base-Model-Name header
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: body-based-router
+  namespace: llm-d
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: body-based-router
+  namespace: llm-d
+  labels:
+    app: body-based-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: body-based-router
+  template:
+    metadata:
+      labels:
+        app: body-based-router
+    spec:
+      serviceAccountName: body-based-router
+      containers:
+      - name: bbr
+        image: us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/bbr:main
+        imagePullPolicy: Always
+        args:
+          - --streaming
+          - --v
+          - "5"
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        ports:
+        - containerPort: 9004
+          protocol: TCP
+          name: ext-proc
+        - containerPort: 9005
+          protocol: TCP
+          name: health
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: body-based-router
+  namespace: llm-d
+  labels:
+    app: body-based-router
+spec:
+  type: ClusterIP
+  selector:
+    app: body-based-router
+  ports:
+  - name: ext-proc
+    port: 9004
+    targetPort: 9004
+    protocol: TCP
+  - name: health
+    port: 9005
+    targetPort: 9005
+    protocol: TCP
+---
+# GCPRoutingExtension chains BBR to the Gateway as an ext_proc filter
+apiVersion: networking.gke.io/v1
+kind: GCPRoutingExtension
+metadata:
+  name: body-based-router
+  namespace: llm-d
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: infra-pattern2-inference-gateway
+  extensionChains:
+  - name: chain1
+    extensions:
+    - name: ext1
+      authority: myext.com
+      backendRef:
+        group: ""
+        kind: Service
+        name: body-based-router
+        port: 9004
+      timeout: 1s
+      requestBodySendMode: FullDuplexStreamed
+      supportedEvents:
+      - RequestHeaders
+      - RequestBody
+      - RequestTrailers

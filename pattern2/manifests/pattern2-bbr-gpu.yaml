@@ -1,0 +1,170 @@
+---
+# Pattern 2 GPU BBR (Body Based Router) Multi-Model Configuration
+#
+# ⚠️ THIS CONFIGURATION DOES NOT WORK - DO NOT APPLY ⚠️
+#
+# REASON: EPP (Endpoint Picker) Architectural Limitation
+#
+# The existing `gaie-pattern2-epp` deployment is configured with:
+#   args: ["--pool-name", "gaie-pattern2"]
+#
+# This means it ONLY monitors the `gaie-pattern2` InferencePool. When we create new
+# InferencePools (gaie-pattern2-phi3, gaie-pattern2-gemma) that reference the same
+# EPP service, the EPP does NOT discover their backends because it's hardcoded to
+# monitor only `gaie-pattern2`.
+#
+# Result: All requests return "no healthy upstream" (0% success rate)
+#
+# SOLUTION REQUIREMENTS (not implemented):
+# - Deploy separate EPP instances per InferencePool:
+#   * gaie-pattern2-phi3-epp (args: --pool-name gaie-pattern2-phi3)
+#   * gaie-pattern2-gemma-epp (args: --pool-name gaie-pattern2-gemma)
+# - Update InferencePool endpointPickerRef to point to dedicated EPP
+# - OR: Implement BBR filter for automatic header injection (not available in GKE)
+#
+# CURRENT WORKING APPROACH:
+# - Use unified InferencePool (gaie-pattern2) with single HTTPRoute
+# - Implement client-side retry logic (2-2.2 average attempts for 100% success)
+# - See: benchmarks/EPP_BACKEND_DISCOVERY_LIMITATION.md
+#
+# References:
+# - Pattern 2 TPU (BBR reference): pattern2/llm-d-pattern2-tpu-setup.md
+# - EPP limitation: benchmarks/EPP_BACKEND_DISCOVERY_LIMITATION.md
+
+apiVersion: inference.networking.k8s.io/v1
+kind: InferencePool
+metadata:
+  name: gaie-pattern2-phi3
+  namespace: llm-d
+  labels:
+    llm-d.ai/pattern: pattern2
+    llm-d.ai/model: phi-3-mini
+spec:
+  endpointPickerRef:
+    failureMode: FailClose
+    group: ""
+    kind: Service
+    name: gaie-pattern2-epp
+    port:
+      number: 9002
+  selector:
+    matchLabels:
+      llm-d.ai/model-name: phi-3-mini  # Only select Phi-3-mini pods
+  targetPorts:
+  - number: 8000
+---
+apiVersion: inference.networking.k8s.io/v1
+kind: InferencePool
+metadata:
+  name: gaie-pattern2-gemma
+  namespace: llm-d
+  labels:
+    llm-d.ai/pattern: pattern2
+    llm-d.ai/model: gemma-2b
+spec:
+  endpointPickerRef:
+    failureMode: FailClose
+    group: ""
+    kind: Service
+    name: gaie-pattern2-epp
+    port:
+      number: 9002
+  selector:
+    matchLabels:
+      llm-d.ai/model-name: gemma-2b  # Only select Gemma-2B pods
+  targetPorts:
+  - number: 8000
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: llm-d-pattern2-phi3-route
+  namespace: llm-d
+  labels:
+    llm-d.ai/pattern: pattern2
+    llm-d.ai/routing-method: bbr
+spec:
+  parentRefs:
+  - name: infra-pattern2-inference-gateway
+    namespace: llm-d
+  rules:
+  # Route Phi-3-mini requests based on x-model-name header
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1/
+      headers:
+      - name: x-model-name
+        value: microsoft/Phi-3-mini-4k-instruct
+    backendRefs:
+    - group: inference.networking.k8s.io
+      kind: InferencePool
+      name: gaie-pattern2-phi3
+      weight: 100
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: llm-d-pattern2-gemma-route
+  namespace: llm-d
+  labels:
+    llm-d.ai/pattern: pattern2
+    llm-d.ai/routing-method: bbr
+spec:
+  parentRefs:
+  - name: infra-pattern2-inference-gateway
+    namespace: llm-d
+  rules:
+  # Route Gemma-2B requests based on x-model-name header
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1/
+      headers:
+      - name: x-model-name
+        value: google/gemma-2b-it
+    backendRefs:
+    - group: inference.networking.k8s.io
+      kind: InferencePool
+      name: gaie-pattern2-gemma
+      weight: 100
+---
+# BBR (Body Based Router) Filter Configuration
+# Injects x-model-name header from request body's "model" field
+# This enables header-based routing without client changes
+#
+# Note: GKE Gateway API may use built-in BBR or require external filter deployment
+# Check Gateway status for BBR filter availability
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: llm-d-pattern2-bbr-fallback
+  namespace: llm-d
+  labels:
+    llm-d.ai/pattern: pattern2
+    llm-d.ai/routing-method: bbr-fallback
+  annotations:
+    # BBR configuration (GKE Gateway API extension)
+    networking.gke.io/app-protocols: '{"http":"HTTP"}'
+spec:
+  parentRefs:
+  - name: infra-pattern2-inference-gateway
+    namespace: llm-d
+  rules:
+  # Catch-all for requests without x-model-name header
+  # Should not be reached if BBR filter is working
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1/
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        add:
+        - name: x-bbr-fallback
+          value: "true"
+    backendRefs:
+    - group: inference.networking.k8s.io
+      kind: InferencePool
+      name: gaie-pattern2-phi3  # Default to Phi-3
+      weight: 100

@@ -1,0 +1,29 @@
+---
+# Model Allowlist ConfigMaps for BBR
+# BBR uses these to map request model names to base model names
+# Label 'inference.networking.k8s.io/bbr-managed: "true"' makes BBR discover these
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: phi-allowlist
+  namespace: llm-d
+  labels:
+    inference.networking.k8s.io/bbr-managed: "true"
+data:
+  baseModel: "microsoft/Phi-3-mini-4k-instruct"
+  adapters: |
+    # No adapters for base model
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gemma-allowlist
+  namespace: llm-d
+  labels:
+    inference.networking.k8s.io/bbr-managed: "true"
+data:
+  baseModel: "google/gemma-2b-it"
+  adapters: |
+    # No adapters for base model

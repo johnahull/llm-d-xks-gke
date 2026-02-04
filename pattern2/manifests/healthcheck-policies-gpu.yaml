@@ -1,0 +1,66 @@
+---
+# HealthCheckPolicy for Phi-3-mini InferencePool
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: phi-pool-healthcheck
+  namespace: llm-d
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 15
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 8000
+        requestPath: /health
+  targetRef:
+    group: inference.networking.k8s.io
+    kind: InferencePool
+    name: phi-pool
+
+---
+# HealthCheckPolicy for Gemma-2B InferencePool
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: gemma-pool-healthcheck
+  namespace: llm-d
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 15
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 8000
+        requestPath: /health
+  targetRef:
+    group: inference.networking.k8s.io
+    kind: InferencePool
+    name: gemma-pool
+
+---
+# HealthCheckPolicy for BBR Service
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: bbr-healthcheck
+  namespace: llm-d
+spec:
+  default:
+    config:
+      type: GRPC
+      grpcHealthCheck:
+        port: 9005
+        portSpecification: USE_FIXED_PORT
+    logConfig:
+      enabled: true
+  targetRef:
+    group: ""
+    kind: Service
+    name: body-based-router

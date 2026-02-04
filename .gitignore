@@ -33,3 +33,6 @@ Thumbs.db
 
 # External dependencies (clone separately)
 llm-d/
+
+# External dependencies (clone separately)
+llm-d-infra-xks/
