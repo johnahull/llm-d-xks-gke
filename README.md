@@ -15,49 +15,77 @@ Each pattern supports both **NVIDIA GPU** (T4) and **Google Cloud TPU** (v6e) ac
 ## Repository Structure
 
 ```
-rhaiis-test/
-├── helm-configs/                # Custom llm-d Helm configurations (tracked)
-│   ├── helmfile.yaml.gotmpl     # Modified helmfile with pattern conditionals
-│   ├── pattern-overrides/       # Pattern-specific Helm value overrides
-│   │   ├── pattern1-overrides.yaml
-│   │   ├── pattern1-tpu-overrides.yaml
-│   │   ├── pattern2-tpu-overrides.yaml
-│   │   └── pattern3-gpu-overrides.yaml
-│   └── README.md                # Setup instructions
-├── pattern1/                    # Pattern 1: Single Replica Baseline
-│   ├── llm-d-pattern1-gpu-setup.md
-│   ├── llm-d-pattern1-tpu-setup.md
-│   ├── manifests/               # Kubernetes manifests
-│   │   ├── httproute-pattern1.yaml
-│   │   └── README.md
-│   └── benchmarks/
-├── pattern2/                    # Pattern 2: Multi-Model Serving
-│   ├── llm-d-pattern2-gpu-setup.md
-│   ├── llm-d-pattern2-tpu-setup.md
-│   ├── manifests/               # Kubernetes manifests
-│   │   ├── httproute-unified.yaml        # GPU auto-discovery
-│   │   ├── inferencepools-bbr.yaml       # TPU BBR pools
-│   │   ├── httproutes-bbr.yaml           # TPU BBR routes
-│   │   ├── healthcheck-policy-fixed.yaml # TPU health checks
-│   │   └── README.md
-│   └── benchmarks/
-├── pattern3/                    # Pattern 3: N/S-Caching Scale-Out
-│   ├── llm-d-pattern3-gpu-setup.md
-│   ├── llm-d-pattern3-tpu-setup.md
-│   ├── PATTERN3_QUICKSTART.md
-│   └── benchmarks/
-├── benchmarks/                  # Unified benchmarking infrastructure
-│   ├── python/                  # Python benchmark scripts
-│   ├── scripts/                 # Shell benchmark scripts
-│   ├── config/                  # Target configurations
-│   └── results/                 # Benchmark results (HTML/JSON)
-├── llm-d/                       # llm-d repository (clone separately, ignored)
-└── rhaiis-test/                 # Legacy testing configurations
-    ├── rhaiis-nvidia.yaml       # Pre-llm-d GPU deployment
-    ├── rhaiis-tpu.yaml          # Pre-llm-d TPU deployment
-    └── *.md                     # Original setup guides
+llmd-gke/
+├── docs/                              # Centralized documentation
+│   ├── README.md                      # Documentation index
+│   ├── benchmarking.md                # Benchmarking methodology
+│   ├── benchmarking-quickstart.md     # Quick benchmark guide
+│   ├── multi-model-updates.md         # Multi-model routing notes
+│   └── deployment-guides/             # Deployment methodologies
+│       ├── gke-inference-gateway-istio.md
+│       ├── cloud-agnostic-llm.md
+│       ├── verification.md
+│       └── verify-operators.sh
+│
+├── patterns/                          # Deployment pattern configurations
+│   ├── pattern1-baseline/             # Pattern 1: Single Replica Baseline
+│   │   ├── README.md
+│   │   ├── docs/                      # Pattern-specific documentation
+│   │   │   ├── llm-d-gpu-setup.md
+│   │   │   ├── llm-d-tpu-setup.md
+│   │   │   ├── istio-kserve-architecture.md
+│   │   │   ├── cluster-architecture.md
+│   │   │   └── security-model.md
+│   │   ├── manifests/                 # Kubernetes manifests
+│   │   │   ├── httproute.yaml
+│   │   │   ├── llmisvc-tpu.yaml
+│   │   │   └── networkpolicies/
+│   │   ├── scripts/                   # Testing and benchmarking
+│   │   └── benchmarks/
+│   │
+│   ├── pattern2-multimodel/           # Pattern 2: Multi-Model Serving
+│   │   ├── README.md
+│   │   ├── docs/
+│   │   ├── manifests/
+│   │   │   ├── routing/               # HTTPRoute and InferencePool configs
+│   │   │   └── healthcheck/           # Health check policies
+│   │   └── benchmarks/
+│   │
+│   ├── pattern3-caching/              # Pattern 3: N/S-Caching Scale-Out
+│   │   ├── README.md
+│   │   ├── docs/
+│   │   ├── manifests/
+│   │   └── benchmarks/
+│   │
+│   └── pattern4-moe/                  # Pattern 4: MoE Multi-Node
+│       ├── README.md
+│       ├── docs/
+│       └── manifests/
+│
+├── helm-configs/                      # Pattern-specific Helm configurations
+│   ├── README.md                      # Setup instructions
+│   ├── helmfile.yaml.gotmpl           # Modified helmfile
+│   └── pattern-overrides/             # Pattern-specific values
+│
+├── benchmarks/                        # Shared benchmarking infrastructure
+│   ├── README.md
+│   ├── scripts/                       # Shell benchmark scripts
+│   ├── python/                        # Python async benchmarks
+│   ├── config/                        # Target and scenario configs
+│   └── results/                       # Benchmark outputs (HTML/JSON)
+│
+└── [Secrets - not tracked]
+    ├── 11009103-jhull-svc-pull-secret.yaml
+    └── huggingface-token-secret.yaml
 ```
 
+**External Dependencies** (cloned as siblings to `llmd-gke/`):
+```
+/home/jhull/devel/
+├── llmd-gke/              # This repository
+├── llm-d/                 # llm-d framework (clone separately)
+└── llm-d-infra-xks/       # llm-d infrastructure (clone separately)
+```
 ## Deployment Patterns
 
 ### Pattern 1: Single Replica Baseline
@@ -69,8 +97,8 @@ rhaiis-test/
 - **Throughput**: ~1 req/s
 
 📖 **Guides**:
-- [GPU Setup](pattern1/llm-d-pattern1-gpu-setup.md)
-- [TPU Setup](pattern1/llm-d-pattern1-tpu-setup.md)
+- [GPU Setup](patterns/pattern1-baseline/docs/llm-d-gpu-setup.md)
+- [TPU Setup](patterns/pattern1-baseline/docs/llm-d-tpu-setup.md)
 
 ### Pattern 2: Multi-Model Serving
 
@@ -80,8 +108,8 @@ rhaiis-test/
 - **Features**: Model selection based on request, independent scaling per model
 
 📖 **Guides**:
-- [GPU Setup](pattern2/llm-d-pattern2-gpu-setup.md)
-- [TPU Setup](pattern2/llm-d-pattern2-tpu-setup.md)
+- [GPU Setup](patterns/pattern2-multimodel/docs/llm-d-gpu-setup.md)
+- [TPU Setup](patterns/pattern2-multimodel/docs/llm-d-tpu-setup.md)
 
 ### Pattern 3: N/S-Caching Scale-Out (Recommended)
 
@@ -98,9 +126,9 @@ rhaiis-test/
 - 17× throughput improvement over Pattern 1 (GPU)
 
 📖 **Guides**:
-- [GPU Setup](pattern3/llm-d-pattern3-gpu-setup.md)
-- [TPU Setup](pattern3/llm-d-pattern3-tpu-setup.md)
-- [Quick Start](pattern3/PATTERN3_QUICKSTART.md)
+- [GPU Setup](patterns/pattern3-caching/docs/llm-d-gpu-setup.md)
+- [TPU Setup](patterns/pattern3-caching/docs/llm-d-tpu-setup.md)
+- [Quick Start](patterns/pattern3-caching/docs/quickstart.md)
 
 ## Quick Start
 
@@ -129,10 +157,10 @@ git clone https://github.com/llm-d/llm-d.git
 
 # 2. Copy custom configurations
 cp helm-configs/pattern-overrides/*.yaml \
-   llm-d/guides/inference-scheduling/ms-inference-scheduling/
+   ../llm-d/guides/inference-scheduling/ms-inference-scheduling/
 
 cp helm-configs/helmfile.yaml.gotmpl \
-   llm-d/guides/inference-scheduling/
+   ../llm-d/guides/inference-scheduling/
 ```
 
 See [helm-configs/README.md](helm-configs/README.md) for detailed setup instructions.
@@ -142,10 +170,10 @@ See [helm-configs/README.md](helm-configs/README.md) for detailed setup instruct
 **GPU Deployment**:
 ```bash
 # Review the setup guide
-cat pattern3/llm-d-pattern3-gpu-setup.md
+cat patterns/pattern3-caching/docs/llm-d-gpu-setup.md
 
 # Deploy using helmfile
-cd llm-d/guides/inference-scheduling
+cd ../llm-d/guides/inference-scheduling
 helmfile apply -e gke -n llm-d --selector release=pattern3
 
 # Run comprehensive benchmark
@@ -343,7 +371,7 @@ kubectl get secret -n llm-d 11009103-jhull-svc-pull-secret
 
 - **Project Instructions**: [`CLAUDE.md`](CLAUDE.md) - Comprehensive guide for Claude Code
 - **Benchmarking Guide**: [`benchmarks.md`](benchmarks.md)
-- **Pattern Guides**: See `pattern1/`, `pattern2/`, `pattern3/` directories
+- **Pattern Guides**: See `patterns/` directory for all deployment patterns
 - **llm-d Documentation**: [llm-d.ai](https://llm-d.ai/)
 - **Google AI on GKE**: [gke-ai-labs.dev](https://gke-ai-labs.dev)
 

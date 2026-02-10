@@ -17,17 +17,17 @@ git clone https://github.com/llm-d/llm-d.git
 ```bash
 # Copy pattern overrides
 cp helm-configs/pattern-overrides/*.yaml \
-   llm-d/guides/inference-scheduling/ms-inference-scheduling/
+   ../llm-d/guides/inference-scheduling/ms-inference-scheduling/
 
 # Copy modified helmfile
 cp helm-configs/helmfile.yaml.gotmpl \
-   llm-d/guides/inference-scheduling/
+   ../llm-d/guides/inference-scheduling/
 ```
 
 ### 3. Deploy Pattern
 
 ```bash
-cd llm-d/guides/inference-scheduling
+cd ../llm-d/guides/inference-scheduling
 
 # For GPU Pattern 1
 helmfile apply -e gke -n llm-d --selector release=pattern1
