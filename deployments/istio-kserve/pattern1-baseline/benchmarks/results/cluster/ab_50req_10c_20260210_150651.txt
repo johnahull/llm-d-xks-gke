@@ -1,0 +1,46 @@
+This is ApacheBench, Version 2.3 <$Revision: 1923142 $>
+Copyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
+Licensed to The Apache Software Foundation, http://www.apache.org/
+
+Benchmarking 34.7.208.8 (be patient).....done
+
+
+Server Software:        istio-envoy
+Server Hostname:        34.7.208.8
+Server Port:            80
+
+Document Path:          /llm-d-inference-scheduling/qwen2-3b-pattern1/v1/completions
+Document Length:        16 bytes
+
+Concurrency Level:      10
+Time taken for tests:   7.161 seconds
+Complete requests:      50
+Failed requests:        0
+Non-2xx responses:      50
+Total transferred:      8600 bytes
+Total body sent:        16650
+HTML transferred:       800 bytes
+Requests per second:    6.98 [#/sec] (mean)
+Time per request:       1432.170 [ms] (mean)
+Time per request:       143.217 [ms] (mean, across all concurrent requests)
+Transfer rate:          1.17 [Kbytes/sec] received
+                        2.27 kb/s sent
+                        3.44 kb/s total
+
+Connection Times (ms)
+              min  mean[+/-sd] median   max
+Connect:      142  176  24.9    167     208
+Processing:  1142 1187  36.9   1164    1231
+Waiting:      147  181  24.1    184     207
+Total:       1288 1363  59.8   1330    1438
+
+Percentage of the requests served within a certain time (ms)
+  50%   1330
+  66%   1433
+  75%   1434
+  80%   1434
+  90%   1435
+  95%   1435
+  98%   1438
+  99%   1438
+ 100%   1438 (longest request)

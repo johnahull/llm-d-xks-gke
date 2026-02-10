@@ -1,0 +1,51 @@
+================================================
+  istio-kserve-pattern1 Benchmark Results
+================================================
+Date: Tue Feb 10 03:06:51 PM CST 2026
+Endpoint: http://34.7.208.8/llm-d-inference-scheduling/qwen2-3b-pattern1/v1/completions
+Model: Qwen/Qwen2.5-3B-Instruct
+Protocol: http
+
+----------------------------------------
+Scenario: Baseline (1 req, concurrency 1)
+  Requests: 1
+  Concurrency: 1
+  Throughput: 0.70 req/sec
+  Latency (mean): 1418.598ms
+  Failed requests: 0
+
+----------------------------------------
+Scenario: Serial (10 req, concurrency 1)
+  Requests: 10
+  Concurrency: 1
+  Throughput: 0.72 req/sec
+  Latency (mean): 1380.549ms
+  Failed requests: 0
+
+----------------------------------------
+Scenario: Light load (20 req, concurrency 5)
+  Requests: 20
+  Concurrency: 5
+  Throughput: 3.53 req/sec
+  Latency (mean): 1415.226ms
+  Failed requests: 0
+
+----------------------------------------
+Scenario: Medium load (50 req, concurrency 10)
+  Requests: 50
+  Concurrency: 10
+  Throughput: 6.98 req/sec
+  Latency (mean): 1432.170ms
+  Failed requests: 0
+
+----------------------------------------
+Scenario: Heavy load (100 req, concurrency 20)
+  Requests: 100
+  Concurrency: 20
+  Throughput: 14.32 req/sec
+  Latency (mean): 1397.119ms
+  Failed requests: 0
+
+================================================
+Results saved to: ../benchmarks/results/cluster
+================================================

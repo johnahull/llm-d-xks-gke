@@ -38,9 +38,37 @@ kubectl apply -f manifests/llmisvc-tpu.yaml
 kubectl apply -f manifests/networkpolicies/
 ```
 
-## Testing
+## API Access
 
-See [scripts/test-cluster.sh](scripts/test-cluster.sh) for cluster validation and [scripts/benchmark-cluster.sh](scripts/benchmark-cluster.sh) for performance benchmarking.
+**Deployed Model:** Qwen2.5-3B-Instruct on TPU v6e-4
+
+**Base URL:** `http://34.7.208.8/llm-d-inference-scheduling/qwen2-3b-pattern1`
+
+See [API-ACCESS.md](API-ACCESS.md) for complete API usage examples and OpenAI client integration.
+
+### Quick Test
+
+```bash
+# List models
+curl http://34.7.208.8/llm-d-inference-scheduling/qwen2-3b-pattern1/v1/models
+
+# Chat completion
+curl -X POST http://34.7.208.8/llm-d-inference-scheduling/qwen2-3b-pattern1/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"/mnt/models","messages":[{"role":"user","content":"Hello"}],"max_tokens":50}'
+```
+
+## Testing & Benchmarks
+
+- [scripts/test-cluster.sh](scripts/test-cluster.sh) - Cluster validation
+- [scripts/benchmark-cluster.sh](scripts/benchmark-cluster.sh) - Performance benchmarking
+
+**Latest Benchmark Results** (2026-02-10):
+- Peak throughput: 14.32 req/sec (concurrency 20)
+- Average latency: ~1400ms
+- Reliability: 0 failures across 180 requests
+
+See [benchmarks/results/cluster/](benchmarks/results/cluster/) for detailed results.
 
 ## Documentation
 

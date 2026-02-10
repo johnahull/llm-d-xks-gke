@@ -167,6 +167,34 @@ spec:
 
 #### 3. Allow vLLM Egress (`allow-vllm-egress`)
 
+**Current Configuration (PoC):**
+
+```yaml
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: qwen2-3b-pattern1
+      kserve.io/component: workload
+
+  policyTypes:
+  - Egress
+
+  egress:
+  - {}  # Allow all egress traffic
+```
+
+**Allowed Traffic:**
+- ✅ vLLM → Any external destination (all ports/protocols)
+
+**Rationale:** During initial deployment, restrictive egress policies caused model download failures from HuggingFace. To expedite testing, a permissive allow-all egress policy was implemented.
+
+**⚠️ Security Note:** This is suitable for PoC environments but should be restricted in production. See [Production Hardening Recommendations](#3-restrict-egress-ips) below for recommended egress restrictions.
+
+**Production-Ready Alternative:**
+
+<details>
+<summary>Click to expand restrictive egress policy</summary>
+
 ```yaml
 spec:
   podSelector:
@@ -213,6 +241,8 @@ spec:
 - ✅ vLLM → Kubernetes API (metadata, health reporting)
 - ❌ vLLM → other pods (blocked - no lateral movement)
 
+</details>
+
 ### Traffic Flow Matrix
 
 | Source | Destination | Port | Protocol | Allowed | Policy |
@@ -221,10 +251,11 @@ spec:
 | Internet | Gateway | 80 | HTTP | ✅ | GKE LoadBalancer |
 | Gateway | vLLM | 8000 | HTTP | ✅ | allow-gateway-to-vllm |
 | Kubelet | vLLM | 8000 | HTTP | ✅ | allow-gateway-to-vllm |
-| vLLM | DNS | 53 | UDP/TCP | ✅ | allow-vllm-egress |
-| vLLM | Internet | 443 | HTTPS | ✅ | allow-vllm-egress |
+| vLLM | Any external | Any | Any | ✅ | allow-vllm-egress (PoC config) |
 | Pod (same ns) | vLLM | 8000 | HTTP | ❌ | default-deny-all |
 | vLLM | vLLM | 8000 | HTTP | ❌ | default-deny-all |
+
+**Note:** The current egress policy is permissive (allow-all) for PoC purposes. See the egress policy section above for production-ready restrictions.
 
 ### Verification
 
@@ -330,6 +361,23 @@ echo | openssl s_client -connect 34.7.208.8:443 -servername \
   qwen2-3b-pattern1.llm-d-inference-scheduling.svc.cluster.local 2>/dev/null | \
   grep -E "subject=|issuer=|Verify return code"
 ```
+
+### DestinationRule TLS Configuration
+
+**Issue:** KServe automatically creates DestinationRule resources with TLS configuration that expects mTLS certificates:
+
+```yaml
+spec:
+  trafficPolicy:
+    tls:
+      caCertificates: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+```
+
+This causes "Secret is not supplied by SDS" errors in the Istio gateway when vLLM pods serve plain HTTP.
+
+**Current Workaround:** For PoC deployments, the KServe controller is allowed to manage DestinationRules with their default TLS configuration. The vLLM workload pods serve HTTP internally, and Istio handles this correctly without mTLS enforcement.
+
+**HTTP Access:** The API is accessible via HTTP on port 80 at the gateway for testing purposes. HTTPS (port 443) is configured for production use with TLS termination at the gateway.
 
 ---
 

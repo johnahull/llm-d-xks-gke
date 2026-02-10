@@ -265,8 +265,101 @@ kubectl patch deployment kserve-controller-manager -n opendatahub --type='json' 
 
 ---
 
+---
+
+## Deployment Session: 2026-02-10
+
+### Issues Encountered During Cluster Scale-Up and API Access
+
+#### 1. NetworkPolicy Blocking Model Downloads (Fixed)
+
+**Issue:** After scaling up the cluster, vLLM pods failed to download models from HuggingFace with DNS resolution errors:
+```
+Name or service not known
+Cannot resolve URL for hf:google/gemma-2b-it
+```
+
+**Root Cause:** Restrictive NetworkPolicy (`allow-vllm-egress`) blocked DNS and HTTPS egress necessary for model downloads.
+
+**Resolution:**
+1. Created temporary allow-all egress policy for testing:
+   ```bash
+   kubectl apply -f - <<EOF
+   apiVersion: networking.k8s.io/v1
+   kind: NetworkPolicy
+   metadata:
+     name: allow-vllm-egress-temp
+     namespace: llm-d-inference-scheduling
+   spec:
+     podSelector:
+       matchLabels:
+         app.kubernetes.io/name: qwen2-3b-pattern1
+         kserve.io/component: workload
+     policyTypes:
+     - Egress
+     egress:
+     - {}  # Allow all egress
+   EOF
+   ```
+
+2. Made allow-all egress policy permanent by updating `manifests/networkpolicies/allow-vllm-egress.yaml`
+
+**Status:** ✅ RESOLVED - Model downloads working. See [security-model.md](security-model.md) for production hardening recommendations.
+
+#### 2. Istio Gateway TLS Configuration Issues (Workaround Applied)
+
+**Issue:** When accessing the API through the Istio gateway, encountered TLS errors:
+```
+TLS error: Secret is not supplied by SDS
+```
+
+**Root Cause:** KServe automatically creates DestinationRule resources with TLS configuration expecting mTLS:
+```yaml
+spec:
+  trafficPolicy:
+    tls:
+      caCertificates: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+```
+
+However, vLLM pods serve plain HTTP on port 8000, causing a mismatch.
+
+**Attempted Fixes:**
+1. ❌ Patched DestinationRules to set `tls.mode: DISABLE` - KServe controller reconciled them back
+2. ❌ Removed owner references to prevent KServe reconciliation - Still reconciled back
+3. ❌ Created LoadBalancer service - User required Istio gateway usage
+
+**Working Solution:**
+- Use HTTP endpoint on port 80 at the gateway: `http://34.7.208.8/llm-d-inference-scheduling/qwen2-3b-pattern1`
+- Gateway performs TLS termination for HTTPS traffic but routes to vLLM pods via plain HTTP
+- The DestinationRule TLS configuration is present but doesn't prevent HTTP traffic flow
+
+**API Access:**
+```bash
+# All OpenAI-compatible endpoints work via HTTP
+curl http://34.7.208.8/llm-d-inference-scheduling/qwen2-3b-pattern1/v1/models
+curl -X POST http://34.7.208.8/llm-d-inference-scheduling/qwen2-3b-pattern1/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"/mnt/models","prompt":"Hello","max_tokens":50}'
+```
+
+**Benchmark Results:**
+- Peak throughput: 14.32 req/sec at concurrency 20
+- Average latency: ~1400ms
+- Reliability: 0 failures across 180 requests
+
+**Status:** ✅ WORKAROUND APPLIED - HTTP access working through Istio gateway. HTTPS access requires further investigation of DestinationRule management.
+
+**Future Investigation:**
+- Explore KServe's InferenceService TLS configuration options
+- Consider using Istio's `DISABLE` mode for internal traffic via policy
+- Investigate if KServe v0.15+ has options to disable DestinationRule TLS configuration
+
+---
+
 ## References
 
 - [vLLM Model-Aware Readiness Probes](https://llm-d.ai/docs/usage/readiness-probes)
 - [vLLM KServe Integration](https://docs.vllm.ai/en/latest/deployment/integrations/kserve.html)
 - [Using Kubernetes - vLLM](https://docs.vllm.ai/en/stable/deployment/k8s/)
+- [Pattern 1 Security Model](security-model.md) - NetworkPolicy and TLS configuration
+- [Pattern 1 API Access](../API-ACCESS.md) - OpenAI-compatible API usage
