@@ -405,8 +405,8 @@ python3 benchmarks/python/pattern2_benchmark_retry.py
 
 ## References
 
-- **Pattern 2 GPU Documentation**: `pattern2/llm-d-pattern2-gpu-setup.md`
-- **Pattern 2 TPU (BBR approach)**: `pattern2/llm-d-pattern2-tpu-setup.md`
+- **Pattern 2 GPU Documentation**: `deployments/gateway-api/pattern2-multimodel/docs/llm-d-gpu-setup.md`
+- **Pattern 2 TPU (BBR approach)**: `deployments/gateway-api/pattern2-multimodel/docs/llm-d-tpu-setup.md`
 - **Benchmark Results**: `benchmarks/PATTERN2_GPU_RESULTS.md`
 - **Retry-aware Benchmark**: `benchmarks/python/pattern2_benchmark_retry.py`
 - **llm-d Project**: https://llm-d.ai/

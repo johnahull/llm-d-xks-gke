@@ -270,7 +270,7 @@ python3 pattern2_benchmark_retry.py
 - **Target Configuration**: `benchmarks/config/targets.yaml`
 - **Test Scenarios**: `benchmarks/config/test_scenarios.yaml`
 - **Load Test Scripts**: `/tmp/test-50-random.sh`, `/tmp/final-unified-test.sh`
-- **Documentation**: `pattern2/llm-d-pattern2-gpu-setup.md`
+- **Documentation**: `deployments/gateway-api/pattern2-multimodel/docs/llm-d-gpu-setup.md`
 
 ## Conclusion
 

@@ -263,8 +263,8 @@ The current unified InferencePool approach with client-side retry logic is the p
 ## References
 
 - **EPP Limitation Documentation**: `benchmarks/EPP_BACKEND_DISCOVERY_LIMITATION.md`
-- **BBR Configuration (Non-Working)**: `pattern2/manifests/pattern2-bbr-gpu.yaml`
-- **Pattern 2 TPU (BBR Working)**: `pattern2/llm-d-pattern2-tpu-setup.md`
+- **BBR Configuration (Non-Working)**: `deployments/gateway-api/pattern2-multimodel/manifests/pattern2-bbr-gpu.yaml`
+- **Pattern 2 TPU (BBR Working)**: `deployments/gateway-api/pattern2-multimodel/docs/llm-d-tpu-setup.md`
 - **Retry Logic Benchmark**: `benchmarks/python/pattern2_benchmark_retry.py`
 - **Gateway IP**: 35.209.92.117
 - **Current HTTPRoute**: `llm-d-pattern2-inference-scheduling` (unified)
@@ -279,7 +279,7 @@ The current unified InferencePool approach with client-side retry logic is the p
    - **Status:** Labels remain (useful metadata, no negative impact)
 
 2. **Created BBR configuration file:**
-   - `pattern2/manifests/pattern2-bbr-gpu.yaml`
+   - `deployments/gateway-api/pattern2-multimodel/manifests/pattern2-bbr-gpu.yaml`
    - **Status:** Kept with warning header (documents why BBR doesn't work)
 
 3. **BBR resources applied and reverted:**

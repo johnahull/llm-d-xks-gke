@@ -7,7 +7,7 @@ set -e  # Exit on error
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BENCHMARK_DIR="$(dirname "$SCRIPT_DIR")"
 PROJECT_ROOT="$(dirname "$BENCHMARK_DIR")"
-VENV_PATH="/home/jhull/devel/venv"
+VENV_PATH="${VENV_PATH:-${PROJECT_ROOT}/.venv}"
 
 # Colors
 GREEN='\033[0;32m'
