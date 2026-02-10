@@ -68,7 +68,7 @@ After deploying BBR and models with helmfile:
 
 ```bash
 # Apply unified HTTPRoute
-kubectl apply -f patterns/pattern2-multimodel/manifests/httproute-unified.yaml -n llm-d
+kubectl apply -f deployments/gateway-api/pattern2-multimodel/manifests/httproute-unified.yaml -n llm-d
 ```
 
 ### For TPU (BBR Header-Based Routing)
@@ -105,13 +105,13 @@ data:
 EOF
 
 # Apply InferencePools
-kubectl apply -f patterns/pattern2-multimodel/manifests/inferencepools-bbr.yaml -n llm-d-inference-scheduling
+kubectl apply -f deployments/gateway-api/pattern2-multimodel/manifests/inferencepools-bbr.yaml -n llm-d-inference-scheduling
 
 # Apply HTTPRoutes
-kubectl apply -f patterns/pattern2-multimodel/manifests/httproutes-bbr.yaml -n llm-d-inference-scheduling
+kubectl apply -f deployments/gateway-api/pattern2-multimodel/manifests/httproutes-bbr.yaml -n llm-d-inference-scheduling
 
 # Apply HealthCheckPolicies
-kubectl apply -f patterns/pattern2-multimodel/manifests/healthcheck-policy-fixed.yaml -n llm-d-inference-scheduling
+kubectl apply -f deployments/gateway-api/pattern2-multimodel/manifests/healthcheck-policy-fixed.yaml -n llm-d-inference-scheduling
 ```
 
 ## Architecture

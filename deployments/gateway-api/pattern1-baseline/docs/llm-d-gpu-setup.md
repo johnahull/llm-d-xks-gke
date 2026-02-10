@@ -267,7 +267,7 @@ kubectl get gateway infra-pattern1-inference-gateway -n $NAMESPACE -o wide
 
 **Create HTTPRoute**:
 ```bash
-kubectl apply -f patterns/pattern1-baseline/manifests/httproute-pattern1.yaml -n $NAMESPACE
+kubectl apply -f deployments/gateway-api/pattern1-baseline/manifests/httproute-pattern1.yaml -n $NAMESPACE
 
 # Verify HTTPRoute
 kubectl get httproute -n $NAMESPACE
@@ -823,7 +823,7 @@ The HTTPRoute connects the Gateway to the intelligent scheduler via InferencePoo
 
 **Create HTTPRoute**:
 ```bash
-kubectl apply -f patterns/pattern1-baseline/manifests/httproute-pattern1.yaml -n $NAMESPACE
+kubectl apply -f deployments/gateway-api/pattern1-baseline/manifests/httproute-pattern1.yaml -n $NAMESPACE
 
 # Verify HTTPRoute created
 kubectl get httproute -n $NAMESPACE

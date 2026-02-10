@@ -265,7 +265,7 @@ helmfile -e gke_tpu -n $NAMESPACE apply
 
 # Create HTTPRoute to connect Gateway to InferencePool
 # Apply HTTPRoute from manifests directory
-kubectl apply -f patterns/pattern1-baseline/manifests/httproute-pattern1.yaml -n llm-d-inference-scheduling
+kubectl apply -f deployments/gateway-api/pattern1-baseline/manifests/httproute-pattern1.yaml -n llm-d-inference-scheduling
 ```
 
 See [`manifests/README.md`](manifests/README.md) for the HTTPRoute manifest details.

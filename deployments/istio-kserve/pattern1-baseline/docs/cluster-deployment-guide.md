@@ -703,8 +703,8 @@ kubectl annotate certificate inference-gateway-tls -n opendatahub \
 
 - [Configure monitoring and alerting](https://cloud.google.com/stackdriver)
 - [Set up CI/CD pipeline](https://cloud.google.com/build)
-- [Implement autoscaling (Pattern 3)](../../../patterns/pattern3-caching/README.md)
-- [Add multiple models (Pattern 2)](../../../patterns/pattern2-multimodel/README.md)
+- [Implement autoscaling (Pattern 3)](../../../deployments/gateway-api/pattern3-caching/README.md)
+- [Add multiple models (Pattern 2)](../../../deployments/gateway-api/pattern2-multimodel/README.md)
 - [Replace self-signed certs with Let's Encrypt](./security-model.md#production-hardening-recommendations)
 
 ---
@@ -713,6 +713,6 @@ kubectl annotate certificate inference-gateway-tls -n opendatahub \
 
 - [Architecture Documentation](./architecture.md)
 - [Security Model](./security-model.md)
-- [Pattern 1 Overview](../../../patterns/pattern1-baseline/README.md)
+- [Pattern 1 Overview](../../../deployments/gateway-api/pattern1-baseline/README.md)
 - [llm-d Documentation](https://llm-d.ai/docs)
 - [GKE Documentation](https://cloud.google.com/kubernetes-engine/docs)

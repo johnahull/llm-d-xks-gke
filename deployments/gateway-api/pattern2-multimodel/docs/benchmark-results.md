@@ -162,9 +162,9 @@ labels:
 - **Cost:** ~$2.56/hour (2 TPU v6e-1 @ $1.28/hour each)
 
 ### Configuration Files
-- `patterns/pattern2-multimodel/manifests/inferencepools-bbr.yaml` - InferencePool manifests ✅ Applied
-- `patterns/pattern2-multimodel/manifests/httproutes-bbr.yaml` - HTTPRoute manifests ✅ Applied
-- `patterns/pattern2-multimodel/manifests/healthcheck-policy-fixed.yaml` - HealthCheckPolicy manifests ✅ Applied
+- `deployments/gateway-api/pattern2-multimodel/manifests/inferencepools-bbr.yaml` - InferencePool manifests ✅ Applied
+- `deployments/gateway-api/pattern2-multimodel/manifests/httproutes-bbr.yaml` - HTTPRoute manifests ✅ Applied
+- `deployments/gateway-api/pattern2-multimodel/manifests/healthcheck-policy-fixed.yaml` - HealthCheckPolicy manifests ✅ Applied
 
 ## Generated Reports
 

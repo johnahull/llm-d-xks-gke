@@ -431,7 +431,7 @@ kubectl create secret generic hf-token \
 
 **Step 1: Create LLMInferenceService Manifest**
 
-Save as `patterns/pattern1-baseline/manifests/llmisvc-pattern1-tpu.yaml`:
+Save as `deployments/gateway-api/pattern1-baseline/manifests/llmisvc-pattern1-tpu.yaml`:
 
 ```yaml
 apiVersion: serving.kserve.io/v1alpha1
@@ -519,7 +519,7 @@ spec:
 **Step 2: Apply Manifest**
 
 ```bash
-kubectl apply -f patterns/pattern1-baseline/manifests/llmisvc-pattern1-tpu.yaml
+kubectl apply -f deployments/gateway-api/pattern1-baseline/manifests/llmisvc-pattern1-tpu.yaml
 ```
 
 **Step 3: Monitor Deployment**

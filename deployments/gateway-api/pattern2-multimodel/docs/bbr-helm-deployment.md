@@ -225,15 +225,15 @@ Apply your model-specific InferencePools and header-based HTTPRoutes:
 
 **For TPU:**
 ```bash
-kubectl apply -f patterns/pattern2-multimodel/manifests/inferencepools-bbr.yaml -n $NAMESPACE
-kubectl apply -f patterns/pattern2-multimodel/manifests/httproutes-bbr.yaml -n $NAMESPACE
-kubectl apply -f patterns/pattern2-multimodel/manifests/healthcheck-policy-fixed.yaml -n $NAMESPACE
+kubectl apply -f deployments/gateway-api/pattern2-multimodel/manifests/inferencepools-bbr.yaml -n $NAMESPACE
+kubectl apply -f deployments/gateway-api/pattern2-multimodel/manifests/httproutes-bbr.yaml -n $NAMESPACE
+kubectl apply -f deployments/gateway-api/pattern2-multimodel/manifests/healthcheck-policy-fixed.yaml -n $NAMESPACE
 ```
 
 **For GPU:**
 ```bash
-kubectl apply -f patterns/pattern2-multimodel/manifests/pattern2-bbr-gpu-working.yaml -n $NAMESPACE
-kubectl apply -f patterns/pattern2-multimodel/manifests/healthcheck-policies-gpu.yaml -n $NAMESPACE
+kubectl apply -f deployments/gateway-api/pattern2-multimodel/manifests/pattern2-bbr-gpu-working.yaml -n $NAMESPACE
+kubectl apply -f deployments/gateway-api/pattern2-multimodel/manifests/healthcheck-policies-gpu.yaml -n $NAMESPACE
 ```
 
 Wait 2-3 minutes for GKE load balancer health checks to propagate.

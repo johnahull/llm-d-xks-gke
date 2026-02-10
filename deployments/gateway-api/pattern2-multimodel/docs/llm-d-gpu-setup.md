@@ -263,7 +263,7 @@ If HTTPRoute needs updating (e.g., from old weighted routing):
 kubectl delete httproute llm-d-pattern1-inference-scheduling -n llm-d 2>/dev/null || true
 
 # Apply unified HTTPRoute
-kubectl apply -f patterns/pattern2-multimodel/manifests/httproute-unified.yaml -n llm-d
+kubectl apply -f deployments/gateway-api/pattern2-multimodel/manifests/httproute-unified.yaml -n llm-d
 ```
 
 **How this works**:
@@ -963,7 +963,7 @@ RELEASE_NAME_POSTFIX=pattern2 helmfile -e gke -n llm-d destroy
 
 # Restore single-model HTTPRoute
 kubectl delete httproute llm-d-multi-model-inference -n llm-d
-kubectl apply -f patterns/pattern1-baseline/manifests/httproute-pattern1.yaml -n llm-d
+kubectl apply -f deployments/gateway-api/pattern1-baseline/manifests/httproute-pattern1.yaml -n llm-d
 
 # Scale GPU nodes back to 1
 gcloud container clusters resize nvidia-test-cluster \

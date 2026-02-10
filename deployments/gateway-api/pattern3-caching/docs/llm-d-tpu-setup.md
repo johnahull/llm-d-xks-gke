@@ -290,7 +290,7 @@ helmfile -e gke_tpu -n $NAMESPACE apply
 
 # Create HTTPRoute to connect Gateway to InferencePool
 # Apply Pattern 3 HTTPRoute from manifests directory
-kubectl apply -f patterns/pattern3-caching/manifests/httproute-pattern3.yaml -n llm-d-inference-scheduling
+kubectl apply -f deployments/gateway-api/pattern3-caching/manifests/httproute-pattern3.yaml -n llm-d-inference-scheduling
 
 echo "✅ Pattern 3 deployment initiated"
 ```
@@ -869,7 +869,7 @@ helmfile -e gke_tpu -n llm-d-inference-scheduling apply
 
 # Create HTTPRoute for Pattern 1
 # Restore Pattern 1 HTTPRoute from manifests directory
-kubectl apply -f patterns/pattern1-baseline/manifests/httproute-pattern1.yaml -n llm-d-inference-scheduling
+kubectl apply -f deployments/gateway-api/pattern1-baseline/manifests/httproute-pattern1.yaml -n llm-d-inference-scheduling
 ```
 
 **Note:** Using the Pattern 1 HTTPRoute manifest for recovery.

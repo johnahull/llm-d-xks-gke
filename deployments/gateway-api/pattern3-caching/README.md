@@ -160,7 +160,7 @@ After deploying infrastructure and model service:
 
 ```bash
 # Apply HTTPRoute from manifests directory
-kubectl apply -f patterns/pattern3-caching/manifests/httproute-pattern3.yaml -n llm-d-inference-scheduling
+kubectl apply -f deployments/gateway-api/pattern3-caching/manifests/httproute-pattern3.yaml -n llm-d-inference-scheduling
 ```
 
 See [`manifests/README.md`](./manifests/README.md) for details.

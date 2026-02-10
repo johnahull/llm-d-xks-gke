@@ -1152,7 +1152,7 @@ Press **Ctrl+C** to stop watching.
 
 ```bash
 # Apply HTTPRoute manifest
-kubectl apply -f ~/../llm-d/guides/inference-scheduling/patterns/pattern1-baseline/manifests/httproute-pattern1.yaml -n $NAMESPACE
+kubectl apply -f ~/../llm-d/guides/inference-scheduling/deployments/gateway-api/pattern1-baseline/manifests/httproute-pattern1.yaml -n $NAMESPACE
 ```
 
 **Expected output:**

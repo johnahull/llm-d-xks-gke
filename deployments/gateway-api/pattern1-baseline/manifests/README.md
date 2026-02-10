@@ -16,7 +16,7 @@ HTTPRoute that routes all traffic to the Pattern 1 InferencePool.
 After deploying the model with helmfile, apply this manifest:
 
 ```bash
-kubectl apply -f patterns/pattern1-baseline/manifests/httproute-pattern1.yaml -n llm-d-inference-scheduling
+kubectl apply -f deployments/gateway-api/pattern1-baseline/manifests/httproute-pattern1.yaml -n llm-d-inference-scheduling
 ```
 
 Verify the HTTPRoute:

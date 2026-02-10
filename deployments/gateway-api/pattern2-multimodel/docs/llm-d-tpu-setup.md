@@ -174,7 +174,7 @@ The challenge with multi-model routing is that model names like `Qwen/Qwen2.5-3B
 
 ### Resource Configuration
 
-**InferencePools** (`patterns/pattern2-multimodel/manifests/inferencepools-bbr.yaml`):
+**InferencePools** (`deployments/gateway-api/pattern2-multimodel/manifests/inferencepools-bbr.yaml`):
 ```yaml
 ---
 apiVersion: inference.networking.k8s.io/v1
@@ -216,7 +216,7 @@ spec:
   - number: 8000
 ```
 
-**HTTPRoutes** (`patterns/pattern2-multimodel/manifests/httproutes-bbr.yaml`):
+**HTTPRoutes** (`deployments/gateway-api/pattern2-multimodel/manifests/httproutes-bbr.yaml`):
 ```yaml
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -268,7 +268,7 @@ spec:
       name: phi-pool
 ```
 
-**HealthCheckPolicies** (`patterns/pattern2-multimodel/manifests/healthcheck-policy-fixed.yaml`):
+**HealthCheckPolicies** (`deployments/gateway-api/pattern2-multimodel/manifests/healthcheck-policy-fixed.yaml`):
 ```yaml
 ---
 apiVersion: networking.gke.io/v1

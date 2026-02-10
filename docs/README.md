@@ -20,12 +20,16 @@ Performance testing and optimization guides.
 
 ## Pattern Documentation
 
-Pattern-specific documentation is located in the `patterns/` directory:
+Pattern-specific documentation organized by technology stack:
 
-- [Pattern 1: Baseline](../patterns/pattern1-baseline/README.md) - Single replica deployment
-- [Pattern 2: Multi-Model](../patterns/pattern2-multimodel/README.md) - Multi-model serving with intelligent routing
-- [Pattern 3: Caching](../patterns/pattern3-caching/README.md) - N/S-caching scale-out (3 replicas)
-- [Pattern 4: MoE](../patterns/pattern4-moe/README.md) - Mixture of Experts patterns
+### Istio/KServe Deployments
+- [Pattern 1: Baseline](../deployments/istio-kserve/pattern1-baseline/README.md) - Istio + KServe single replica
+
+### Gateway API/llm-d Deployments
+- [Pattern 1: Baseline](../deployments/gateway-api/pattern1-baseline/README.md) - llm-d Helm single replica
+- [Pattern 2: Multi-Model](../deployments/gateway-api/pattern2-multimodel/README.md) - Multi-model routing
+- [Pattern 3: Caching](../deployments/gateway-api/pattern3-caching/README.md) - N/S-caching scale-out (3 replicas)
+- [Pattern 4: MoE](../deployments/gateway-api/pattern4-moe/README.md) - Mixture of Experts
 
 ## External Dependencies
 

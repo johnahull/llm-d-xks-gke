@@ -16,9 +16,9 @@
 - Changed health probe schemes from HTTPS to HTTP
 
 **Files Modified:**
-- `patterns/pattern1-baseline/manifests/llmisvc-pattern1-tpu.yaml:43` - HF token secret name
-- `patterns/pattern1-baseline/manifests/llmisvc-pattern1-tpu.yaml:80` - Pull secret name
-- `patterns/pattern1-baseline/manifests/llmisvc-pattern1-tpu.yaml:58,68` - Health probe schemes
+- `deployments/gateway-api/pattern1-baseline/manifests/llmisvc-pattern1-tpu.yaml:43` - HF token secret name
+- `deployments/gateway-api/pattern1-baseline/manifests/llmisvc-pattern1-tpu.yaml:80` - Pull secret name
+- `deployments/gateway-api/pattern1-baseline/manifests/llmisvc-pattern1-tpu.yaml:58,68` - Health probe schemes
 
 ---
 

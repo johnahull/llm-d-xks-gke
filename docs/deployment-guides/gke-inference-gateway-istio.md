@@ -1112,7 +1112,7 @@ Apply HTTPRoute to connect Gateway to InferencePool:
 
 ```bash
 # Apply HTTPRoute manifest
-kubectl apply -f ~/../llm-d/guides/inference-scheduling/patterns/pattern1-baseline/manifests/httproute-pattern1.yaml -n $NAMESPACE
+kubectl apply -f ~/../llm-d/guides/inference-scheduling/deployments/gateway-api/pattern1-baseline/manifests/httproute-pattern1.yaml -n $NAMESPACE
 ```
 
 **Expected output:**
@@ -1879,7 +1879,7 @@ gcloud compute networks subnets create proxy-only-subnet-tpu \
 - Expected p95 latency: ~500ms (after warmup)
 
 For complete TPU deployment guide, see:
-- [llm-d Pattern 1 TPU Setup](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/patterns/pattern1-baseline/docs/llm-d-tpu-setup.md)
+- [llm-d Pattern 1 TPU Setup](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/deployments/gateway-api/pattern1-baseline/docs/llm-d-tpu-setup.md)
 
 ---
 

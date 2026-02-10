@@ -27,42 +27,41 @@ llmd-gke/
 │       ├── verification.md
 │       └── verify-operators.sh
 │
-├── patterns/                          # Deployment pattern configurations
-│   ├── pattern1-baseline/             # Pattern 1: Single Replica Baseline
-│   │   ├── README.md
-│   │   ├── docs/                      # Pattern-specific documentation
-│   │   │   ├── llm-d-gpu-setup.md
-│   │   │   ├── llm-d-tpu-setup.md
-│   │   │   ├── istio-kserve-architecture.md
-│   │   │   ├── cluster-architecture.md
-│   │   │   └── security-model.md
-│   │   ├── manifests/                 # Kubernetes manifests
-│   │   │   ├── httproute.yaml
-│   │   │   ├── llmisvc-tpu.yaml
-│   │   │   └── networkpolicies/
-│   │   ├── scripts/                   # Testing and benchmarking
-│   │   └── benchmarks/
+├── deployments/                       # Tech stack deployments
+│   ├── istio-kserve/                 # Istio + KServe tech stack
+│   │   └── pattern1-baseline/        # Single replica (declarative KServe)
+│   │       ├── README.md
+│   │       ├── docs/                  # Istio/KServe documentation
+│   │       ├── manifests/             # KServe LLMInferenceService
+│   │       ├── scripts/               # Cluster scripts
+│   │       └── benchmarks/
 │   │
-│   ├── pattern2-multimodel/           # Pattern 2: Multi-Model Serving
-│   │   ├── README.md
-│   │   ├── docs/
-│   │   ├── manifests/
-│   │   │   ├── routing/               # HTTPRoute and InferencePool configs
-│   │   │   └── healthcheck/           # Health check policies
-│   │   └── benchmarks/
-│   │
-│   ├── pattern3-caching/              # Pattern 3: N/S-Caching Scale-Out
-│   │   ├── README.md
-│   │   ├── docs/
-│   │   ├── manifests/
-│   │   └── benchmarks/
-│   │
-│   └── pattern4-moe/                  # Pattern 4: MoE Multi-Node
-│       ├── README.md
-│       ├── docs/
-│       └── manifests/
+│   └── gateway-api/                   # Gateway API + llm-d tech stack
+│       ├── pattern1-baseline/         # Single replica (Helm)
+│       │   ├── README.md
+│       │   ├── docs/                  # llm-d Helm documentation
+│       │   ├── manifests/             # Manual HTTPRoutes
+│       │   ├── llm-d-pattern1-values.yaml
+│       │   └── benchmarks/
+│       │
+│       ├── pattern2-multimodel/       # Multi-model serving
+│       │   ├── README.md
+│       │   ├── docs/
+│       │   ├── manifests/
+│       │   └── benchmarks/
+│       │
+│       ├── pattern3-caching/          # N/S-caching scale-out
+│       │   ├── README.md
+│       │   ├── docs/
+│       │   ├── manifests/
+│       │   └── benchmarks/
+│       │
+│       └── pattern4-moe/              # MoE multi-node
+│           ├── README.md
+│           ├── docs/
+│           └── manifests/
 │
-├── helm-configs/                      # Pattern-specific Helm configurations
+├── helm-configs/                      # llm-d Helm configurations
 │   ├── README.md                      # Setup instructions
 │   ├── helmfile.yaml.gotmpl           # Modified helmfile
 │   └── pattern-overrides/             # Pattern-specific values
@@ -78,6 +77,10 @@ llmd-gke/
     ├── 11009103-jhull-svc-pull-secret.yaml
     └── huggingface-token-secret.yaml
 ```
+
+**Tech Stack Comparison:**
+- **Istio/KServe**: Declarative LLMInferenceService, KServe controller automation
+- **Gateway API/llm-d**: Helm-based deployment, manual HTTPRoute creation
 
 **External Dependencies** (cloned as siblings to `llmd-gke/`):
 ```
@@ -97,8 +100,8 @@ llmd-gke/
 - **Throughput**: ~1 req/s
 
 📖 **Guides**:
-- [GPU Setup](patterns/pattern1-baseline/docs/llm-d-gpu-setup.md)
-- [TPU Setup](patterns/pattern1-baseline/docs/llm-d-tpu-setup.md)
+- [GPU Setup](deployments/gateway-api/pattern1-baseline/docs/llm-d-gpu-setup.md)
+- [TPU Setup](deployments/gateway-api/pattern1-baseline/docs/llm-d-tpu-setup.md)
 
 ### Pattern 2: Multi-Model Serving
 
@@ -108,8 +111,8 @@ llmd-gke/
 - **Features**: Model selection based on request, independent scaling per model
 
 📖 **Guides**:
-- [GPU Setup](patterns/pattern2-multimodel/docs/llm-d-gpu-setup.md)
-- [TPU Setup](patterns/pattern2-multimodel/docs/llm-d-tpu-setup.md)
+- [GPU Setup](deployments/gateway-api/pattern2-multimodel/docs/llm-d-gpu-setup.md)
+- [TPU Setup](deployments/gateway-api/pattern2-multimodel/docs/llm-d-tpu-setup.md)
 
 ### Pattern 3: N/S-Caching Scale-Out (Recommended)
 
@@ -126,9 +129,9 @@ llmd-gke/
 - 17× throughput improvement over Pattern 1 (GPU)
 
 📖 **Guides**:
-- [GPU Setup](patterns/pattern3-caching/docs/llm-d-gpu-setup.md)
-- [TPU Setup](patterns/pattern3-caching/docs/llm-d-tpu-setup.md)
-- [Quick Start](patterns/pattern3-caching/docs/quickstart.md)
+- [GPU Setup](deployments/gateway-api/pattern3-caching/docs/llm-d-gpu-setup.md)
+- [TPU Setup](deployments/gateway-api/pattern3-caching/docs/llm-d-tpu-setup.md)
+- [Quick Start](deployments/gateway-api/pattern3-caching/docs/quickstart.md)
 
 ## Quick Start
 
@@ -170,7 +173,7 @@ See [helm-configs/README.md](helm-configs/README.md) for detailed setup instruct
 **GPU Deployment**:
 ```bash
 # Review the setup guide
-cat patterns/pattern3-caching/docs/llm-d-gpu-setup.md
+cat deployments/gateway-api/pattern3-caching/docs/llm-d-gpu-setup.md
 
 # Deploy using helmfile
 cd ../llm-d/guides/inference-scheduling

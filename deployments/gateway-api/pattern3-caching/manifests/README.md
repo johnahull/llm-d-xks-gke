@@ -16,7 +16,7 @@ HTTPRoute that routes traffic to the Pattern 3 InferencePool for 3-replica cachi
 After deploying infrastructure and model services with helmfile:
 
 ```bash
-kubectl apply -f patterns/pattern3-caching/manifests/httproute-pattern3.yaml -n llm-d-inference-scheduling
+kubectl apply -f deployments/gateway-api/pattern3-caching/manifests/httproute-pattern3.yaml -n llm-d-inference-scheduling
 ```
 
 Verify the HTTPRoute:

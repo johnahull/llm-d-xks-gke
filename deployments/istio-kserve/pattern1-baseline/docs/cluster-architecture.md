@@ -289,7 +289,7 @@ To scale to multiple replicas:
 2. EPP scheduler distributes requests across replicas
 3. Prefix cache-aware routing improves cache hit rates
 
-See: [Pattern 3 Architecture](../../../patterns/pattern3-caching/README.md)
+See: [Pattern 3 Architecture](../../../deployments/gateway-api/pattern3-caching/README.md)
 
 ## Design Decisions
 
@@ -331,5 +331,5 @@ See: [Pattern 3 Architecture](../../../patterns/pattern3-caching/README.md)
 
 - [Security Model](./security-model.md) - Detailed security architecture
 - [Deployment Guide](./deployment-guide.md) - Step-by-step deployment
-- [Pattern 1 Reference](../../../patterns/pattern1-baseline/README.md) - Pattern 1 overview
+- [Pattern 1 Reference](../../../deployments/gateway-api/pattern1-baseline/README.md) - Pattern 1 overview
 - [Pattern 1 Architecture Deep Dive](../../../pattern1/istio-kserve-llmd-architecture.md) - Complete reference
