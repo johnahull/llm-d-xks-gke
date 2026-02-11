@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: llm-d-inference-scheduling
+  labels:
+    app.kubernetes.io/name: networkpolicy
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: llm-d-pattern1
+spec:
+  # Apply to all pods in namespace
+  podSelector: {}
+
+  # Deny all ingress and egress by default
+  policyTypes:
+  - Ingress
+  - Egress

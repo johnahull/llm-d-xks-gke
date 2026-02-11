@@ -1,0 +1,202 @@
+# Pattern 1: Single Model with EPP Routing on TPU
+# Model: Qwen/Qwen2.5-3B-Instruct
+# Hardware: TPU v6e-4 (4 chips, 2×2 topology)
+# Routing: EPP scheduler with prefix-cache awareness
+
+modelservice:
+  name: qwen2-3b-pattern1
+  namespace: llm-d-inference-scheduling
+
+  # Model configuration
+  model:
+    name: Qwen/Qwen2.5-3B-Instruct
+    source: huggingface
+    huggingfaceTokenSecret: huggingface-token
+
+  # vLLM runtime configuration
+  runtime:
+    image: registry.redhat.io/rhaiis/vllm-tpu-rhel9:3.2.5
+    imagePullPolicy: IfNotPresent
+    imagePullSecrets:
+      - redhat-pull-secret
+
+    # vLLM server arguments
+    args:
+      - --model=/mnt/models
+      - --dtype=half
+      - --max-model-len=2048
+      - --tensor-parallel-size=4
+      - --disable-log-requests
+      - --port=8000
+
+    # TPU-specific environment
+    env:
+      # TPU topology (2×2 = 4 chips)
+      - name: TPU_CHIPS_PER_HOST_BOUNDS
+        value: "2,2,1"
+      - name: TPU_HOST_BOUNDS
+        value: "1,1,1"
+      - name: PJRT_DEVICE
+        value: "TPU"
+      - name: TPU_WORKER_HOSTNAMES
+        value: "localhost"
+      - name: TPU_WORKER_ID
+        value: "0"
+      - name: TPU_NUM_DEVICES
+        value: "4"
+
+      # HuggingFace configuration
+      - name: HF_HUB_OFFLINE
+        value: "0"
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: huggingface-token
+            key: token
+
+    # Resource requirements
+    resources:
+      requests:
+        google.com/tpu: "4"
+        cpu: "2"
+        memory: "8Gi"
+      limits:
+        google.com/tpu: "4"
+        cpu: "4"
+        memory: "16Gi"
+
+    # Health probes (extended for TPU initialization)
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8000
+        scheme: HTTP
+      initialDelaySeconds: 240   # 4 minutes for TPU init + model download
+      periodSeconds: 30
+      timeoutSeconds: 30
+      failureThreshold: 5        # 2.5 min grace period
+
+    readinessProbe:
+      httpGet:
+        path: /v1/models
+        port: 8000
+        scheme: HTTP
+      initialDelaySeconds: 240   # Wait for model to load
+      periodSeconds: 10
+      timeoutSeconds: 10
+      successThreshold: 1
+      failureThreshold: 3
+
+    # Volume mounts (VFIO for TPU access)
+    volumeMounts:
+      - name: vfio
+        mountPath: /dev/vfio
+
+    volumes:
+      - name: vfio
+        hostPath:
+          path: /dev/vfio
+          type: Directory
+
+  # Node scheduling (TPU v6e)
+  nodeSelector:
+    cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+    cloud.google.com/gke-tpu-topology: 2x2
+
+  tolerations:
+    - key: google.com/tpu
+      operator: Equal
+      value: present
+      effect: NoSchedule
+
+  # Scaling
+  replicas: 1
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+
+# Gateway API routing
+routing:
+  enabled: true
+
+  # Istio Gateway (created by llm-d-infra-xks setup-gateway.sh)
+  gateway:
+    name: inference-gateway
+    namespace: opendatahub
+
+  # HTTPRoute configuration
+  httproute:
+    # Path prefix for this model
+    # Full path: http://<gateway-ip>/llm-d-inference-scheduling/qwen2-3b-pattern1/v1/*
+    pathPrefix: /llm-d-inference-scheduling/qwen2-3b-pattern1
+
+  # EPP scheduler configuration
+  scheduler:
+    enabled: true
+    type: epp
+
+    # Scheduler-specific configuration
+    config:
+      # Prefix cache awareness (route similar prompts to same pod)
+      prefixCacheAware: true
+
+      # Queue depth monitoring (avoid overloaded pods)
+      queueDepthMonitoring: true
+
+      # KV cache utilization tracking (memory-aware placement)
+      kvCacheUtilization: true
+
+      # Scheduler resources
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
+        limits:
+          cpu: "1000m"
+          memory: "1Gi"
+
+# Monitoring and observability
+monitoring:
+  enabled: true
+
+  # Prometheus metrics
+  prometheus:
+    enabled: true
+    port: 8000
+    path: /metrics
+
+  # ServiceMonitor (if Prometheus Operator is installed)
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+
+# Security
+security:
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: false  # TPU access requires privileged mode
+    fsGroup: 1000
+
+  # Container security context
+  securityContext:
+    privileged: true     # Required for TPU VFIO device access
+    capabilities:
+      add:
+        - SYS_ADMIN      # Required for TPU
+
+# Annotations
+annotations:
+  deployment:
+    description: "Pattern 1 - Single model baseline with EPP routing"
+    model: "Qwen/Qwen2.5-3B-Instruct"
+    hardware: "TPU v6e-4"
+    pattern: "pattern1-baseline"
+
+  pod:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"

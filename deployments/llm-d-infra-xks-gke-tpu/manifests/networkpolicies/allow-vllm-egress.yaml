@@ -1,0 +1,54 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-vllm-egress
+  namespace: llm-d-inference-scheduling
+  labels:
+    app.kubernetes.io/name: networkpolicy
+    app.kubernetes.io/component: egress
+    app.kubernetes.io/part-of: llm-d-pattern1
+spec:
+  # Apply to vLLM pods only
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: qwen2-3b-pattern1
+
+  policyTypes:
+  - Egress
+
+  egress:
+  # Allow all egress (PoC - restrict in production)
+  # In production, restrict to:
+  # - HuggingFace Hub (huggingface.co, cdn.huggingface.co)
+  # - Kubernetes API server (for liveness probes)
+  # - DNS (kube-dns, port 53)
+  - {}
+
+# Production example (commented out):
+# egress:
+#   # DNS
+#   - to:
+#     - namespaceSelector:
+#         matchLabels:
+#           kubernetes.io/metadata.name: kube-system
+#       podSelector:
+#         matchLabels:
+#           k8s-app: kube-dns
+#     ports:
+#     - protocol: UDP
+#       port: 53
+#
+#   # HuggingFace Hub
+#   - to:
+#     - namespaceSelector: {}
+#     ports:
+#     - protocol: TCP
+#       port: 443
+#     # Add podSelector or CIDR blocks for huggingface.co
+#
+#   # Kubernetes API server
+#   - to:
+#     - namespaceSelector: {}
+#     ports:
+#     - protocol: TCP
+#       port: 6443
