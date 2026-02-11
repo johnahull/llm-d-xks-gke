@@ -31,6 +31,7 @@ Optional:
   --accelerator <type>       For GPUs: nvidia-tesla-t4, nvidia-tesla-a100, etc.
   --tpu-topology <topology>  For TPUs: 2x2x1, 2x2x2, etc.
   --project <project>        GCP project (default: $PROJECT)
+  --test-capacity            Test actual capacity by attempting instance creation (experimental)
 
 Examples:
   # Check TPU v6e node pool prerequisites
@@ -52,6 +53,7 @@ MACHINE_TYPE=""
 CLUSTER=""
 ACCELERATOR=""
 TPU_TOPOLOGY=""
+TEST_CAPACITY=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -78,6 +80,10 @@ while [[ $# -gt 0 ]]; do
         --project)
             PROJECT="$2"
             shift 2
+            ;;
+        --test-capacity)
+            TEST_CAPACITY=true
+            shift
             ;;
         --help|-h)
             show_usage
@@ -264,16 +270,166 @@ echo "========================================="
 echo "Check 5: Quota Availability"
 echo "========================================="
 
-# This is a basic check - full quota checking requires complex API calls
-if [ "$IS_TPU" = true ]; then
+# Extract region from zone (us-central1-a -> us-central1)
+REGION=$(echo $ZONE | sed 's/-[^-]*$//')
+
+if [ "$IS_GPU" = true ] && [[ -n "$ACCELERATOR" ]]; then
+    # Map accelerator type to quota metric
+    QUOTA_METRIC=""
+    case "$ACCELERATOR" in
+        nvidia-tesla-t4) QUOTA_METRIC="NVIDIA_T4_GPUS" ;;
+        nvidia-tesla-a100) QUOTA_METRIC="NVIDIA_A100_GPUS" ;;
+        nvidia-a100-80gb) QUOTA_METRIC="NVIDIA_A100_80GB_GPUS" ;;
+        nvidia-l4) QUOTA_METRIC="NVIDIA_L4_GPUS" ;;
+        nvidia-h100-80gb) QUOTA_METRIC="NVIDIA_H100_GPUS" ;;
+        nvidia-h100-mega-80gb) QUOTA_METRIC="NVIDIA_H100_MEGA_GPUS" ;;
+        *) QUOTA_METRIC="" ;;
+    esac
+
+    if [[ -n "$QUOTA_METRIC" ]]; then
+        echo "Checking GPU quota in region $REGION..."
+
+        # Get quota information
+        QUOTA_BLOCK=$(gcloud compute regions describe $REGION --project=$PROJECT 2>&1 | \
+            grep -B1 -A1 "metric: $QUOTA_METRIC$")
+
+        if [[ -n "$QUOTA_BLOCK" ]]; then
+            QUOTA_LIMIT=$(echo "$QUOTA_BLOCK" | grep "limit:" | sed 's/.*limit: *//' | awk '{printf "%.0f", $1}')
+            QUOTA_USAGE=$(echo "$QUOTA_BLOCK" | grep "usage:" | sed 's/.*usage: *//' | awk '{printf "%.0f", $1}')
+
+            # Calculate available quota (handle empty values)
+            if [[ -z "$QUOTA_LIMIT" ]] || [[ -z "$QUOTA_USAGE" ]]; then
+                echo -e "${YELLOW}⚠️  Could not parse quota information${NC}"
+                echo "   Manual check recommended"
+            else
+                QUOTA_AVAIL=$((QUOTA_LIMIT - QUOTA_USAGE))
+
+                if [[ "$QUOTA_LIMIT" -eq 0 ]]; then
+                    echo -e "${RED}❌ GPU quota is ZERO for $ACCELERATOR in $REGION${NC}"
+                    echo "   Metric: $QUOTA_METRIC"
+                    echo "   You must request a quota increase before deployment"
+                    echo "   Request at: https://console.cloud.google.com/iam-admin/quotas"
+                    ALL_CHECKS_PASSED=false
+                elif [[ "$QUOTA_AVAIL" -le 0 ]]; then
+                    echo -e "${RED}❌ GPU quota EXHAUSTED for $ACCELERATOR in $REGION${NC}"
+                    echo "   Metric: $QUOTA_METRIC"
+                    echo "   Limit: $QUOTA_LIMIT | Usage: $QUOTA_USAGE | Available: $QUOTA_AVAIL"
+                    echo "   Either request quota increase or delete existing instances"
+                    ALL_CHECKS_PASSED=false
+                elif [[ "$QUOTA_AVAIL" -le 2 ]]; then
+                    echo -e "${YELLOW}⚠️  GPU quota is LOW for $ACCELERATOR in $REGION${NC}"
+                    echo "   Metric: $QUOTA_METRIC"
+                    echo "   Limit: $QUOTA_LIMIT | Usage: $QUOTA_USAGE | Available: $QUOTA_AVAIL"
+                    echo "   Consider requesting increase for production deployments"
+                else
+                    echo -e "${GREEN}✅ GPU quota available for $ACCELERATOR in $REGION${NC}"
+                    echo "   Metric: $QUOTA_METRIC"
+                    echo "   Limit: $QUOTA_LIMIT | Usage: $QUOTA_USAGE | Available: $QUOTA_AVAIL"
+                fi
+            fi
+        else
+            echo -e "${YELLOW}⚠️  Could not find quota metric: $QUOTA_METRIC${NC}"
+            echo "   Manual check recommended: https://console.cloud.google.com/iam-admin/quotas"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Unknown accelerator type for quota check: $ACCELERATOR${NC}"
+        echo "   Manual check recommended: https://console.cloud.google.com/iam-admin/quotas"
+    fi
+
+elif [ "$IS_TPU" = true ]; then
+    # TPU quotas are more complex (pod-level quotas)
     echo -e "${YELLOW}⚠️  TPU quota check requires manual verification${NC}"
+    echo "   TPU quotas are typically at pod-level, not regional"
     echo "   Check quota at: https://console.cloud.google.com/iam-admin/quotas"
-    echo "   Look for: 'TPU v6e' or 'TPU v5e' quotas in region $(echo $ZONE | sed 's/-[^-]*$//')"
-elif [ "$IS_GPU" = true ]; then
-    echo -e "${YELLOW}⚠️  GPU quota check requires manual verification${NC}"
-    echo "   Check quota at: https://console.cloud.google.com/iam-admin/quotas"
-    echo "   Look for: 'GPUs (all regions)' or specific GPU type quotas"
+    echo "   Look for: 'TPU v6e' or 'TPU v5e' quotas in region $REGION"
+else
+    echo -e "${YELLOW}⚠️  No accelerator specified for quota check${NC}"
+    echo "   Checking CPU quota only..."
+
+    # Check CPU quota as fallback
+    CPU_QUOTA=$(gcloud compute regions describe $REGION --project=$PROJECT 2>&1 | \
+        grep -B1 -A1 "metric: CPUS$" | grep -E "limit:|usage:")
+
+    if [[ -n "$CPU_QUOTA" ]]; then
+        CPU_LIMIT=$(echo "$CPU_QUOTA" | grep "limit:" | awk '{print $2}' | cut -d'.' -f1)
+        CPU_USAGE=$(echo "$CPU_QUOTA" | grep "usage:" | awk '{print $2}' | cut -d'.' -f1)
+        CPU_AVAIL=$((CPU_LIMIT - CPU_USAGE))
+
+        echo "   CPUs: Limit=$CPU_LIMIT | Usage=$CPU_USAGE | Available=$CPU_AVAIL"
+    fi
 fi
+echo ""
+
+# ============================================================================
+# Check 5b: Capacity/Stockout Detection
+# ============================================================================
+echo "========================================="
+echo "Check 5b: Capacity Indicators"
+echo "========================================="
+echo "Note: True stockouts can only be detected by attempting creation."
+echo "      These indicators help assess likelihood of available capacity:"
+echo ""
+
+# Check for existing successful deployments
+if [ "$IS_TPU" = true ]; then
+    EXISTING=$(gcloud compute instances list \
+        --filter="zone:($ZONE) AND machineType:$MACHINE_TYPE" \
+        --format="value(name)" \
+        --project=$PROJECT 2>/dev/null | wc -l)
+
+    if [ "$EXISTING" -gt 0 ]; then
+        echo -e "${GREEN}✅ Found $EXISTING existing instance(s) with $MACHINE_TYPE in $ZONE${NC}"
+        echo "   This indicates capacity was recently available"
+    else
+        echo -e "${YELLOW}⚠️  No existing instances found with $MACHINE_TYPE in $ZONE${NC}"
+        echo "   This may indicate limited capacity or new machine type"
+    fi
+
+elif [ "$IS_GPU" = true ] && [[ -n "$ACCELERATOR" ]]; then
+    # For GPUs, check for instances with accelerators
+    # Note: This is harder to detect as accelerators are attached separately
+    EXISTING=$(gcloud compute instances list \
+        --filter="zone:($ZONE)" \
+        --format="value(name)" \
+        --project=$PROJECT 2>/dev/null | wc -l)
+
+    if [ "$EXISTING" -gt 0 ]; then
+        echo -e "${GREEN}✅ Found $EXISTING instance(s) in $ZONE${NC}"
+        echo "   Zone appears to have active compute capacity"
+    else
+        echo -e "${YELLOW}⚠️  No existing instances found in $ZONE${NC}"
+    fi
+
+    # Check for GKE node pools with GPUs in the region
+    REGION=$(echo $ZONE | sed 's/-[^-]*$//')
+    GPU_POOLS=$(gcloud compute instances list \
+        --filter="zone:($ZONE) AND name:gke-*" \
+        --format="value(name)" \
+        --project=$PROJECT 2>/dev/null | wc -l)
+
+    if [ "$GPU_POOLS" -gt 0 ]; then
+        echo -e "${GREEN}✅ Found $GPU_POOLS GKE node(s) in $ZONE${NC}"
+        echo "   This suggests GKE capacity is available"
+    fi
+fi
+
+# Check zone status
+ZONE_STATUS=$(gcloud compute zones describe $ZONE --format="value(status)" --project=$PROJECT 2>/dev/null)
+if [[ "$ZONE_STATUS" == "UP" ]]; then
+    echo -e "${GREEN}✅ Zone status: UP (operational)${NC}"
+elif [[ "$ZONE_STATUS" == "DOWN" ]]; then
+    echo -e "${RED}❌ Zone status: DOWN (maintenance or outage)${NC}"
+    ALL_CHECKS_PASSED=false
+else
+    echo -e "${YELLOW}⚠️  Zone status: $ZONE_STATUS${NC}"
+fi
+
+echo ""
+echo "Capacity Recommendations:"
+echo "  • TPU stockouts are rare but can occur during high demand"
+echo "  • GPU stockouts (especially H100, A100) are more common"
+echo "  • Consider multiple zones for critical deployments"
+echo "  • Use autoscaling with min-nodes=0 to handle temporary stockouts"
 echo ""
 
 # ============================================================================
@@ -310,6 +466,102 @@ if [[ -n "$CLUSTER" ]]; then
         echo "   Error: $CLUSTER_INFO"
         ALL_CHECKS_PASSED=false
     fi
+    echo ""
+fi
+
+# ============================================================================
+# Check 7: Actual Capacity Test (if requested)
+# ============================================================================
+if [ "$TEST_CAPACITY" = true ]; then
+    echo "========================================="
+    echo "Check 7: Actual Capacity Test"
+    echo "========================================="
+    echo -e "${YELLOW}⚠️  WARNING: This test will attempt to create a test instance!${NC}"
+    echo "   The instance will be immediately deleted, but brief charges may apply."
+    echo ""
+
+    TEST_INSTANCE_NAME="capacity-test-$(date +%s)"
+
+    if [ "$IS_TPU" = true ]; then
+        echo "Testing TPU capacity by attempting instance creation..."
+        echo "   Instance name: $TEST_INSTANCE_NAME"
+        echo "   This will take 30-60 seconds..."
+        echo ""
+
+        # Attempt to create a small TPU instance
+        CREATE_OUTPUT=$(gcloud compute tpus tpu-vm create $TEST_INSTANCE_NAME \
+            --zone=$ZONE \
+            --accelerator-type=$(echo $MACHINE_TYPE | sed 's/ct/tpu-v/;s/-standard-/-/;s/t$//') \
+            --version=tpu-vm-base \
+            --project=$PROJECT 2>&1)
+
+        if echo "$CREATE_OUTPUT" | grep -q "Created"; then
+            echo -e "${GREEN}✅ CAPACITY AVAILABLE: Successfully created test TPU instance${NC}"
+            echo "   Deleting test instance..."
+            gcloud compute tpus tpu-vm delete $TEST_INSTANCE_NAME \
+                --zone=$ZONE \
+                --project=$PROJECT \
+                --quiet 2>&1 > /dev/null
+            echo -e "${GREEN}✅ Test instance deleted${NC}"
+        else
+            if echo "$CREATE_OUTPUT" | grep -qi "quota\|QUOTA"; then
+                echo -e "${RED}❌ QUOTA EXCEEDED: Insufficient quota${NC}"
+                ALL_CHECKS_PASSED=false
+            elif echo "$CREATE_OUTPUT" | grep -qi "stockout\|capacity\|ZONE_RESOURCE_POOL_EXHAUSTED"; then
+                echo -e "${RED}❌ STOCKOUT DETECTED: No capacity available in $ZONE${NC}"
+                echo "   Try alternative zones or wait for capacity to become available"
+                ALL_CHECKS_PASSED=false
+            else
+                echo -e "${RED}❌ CAPACITY TEST FAILED${NC}"
+                echo "   Error: $CREATE_OUTPUT"
+                ALL_CHECKS_PASSED=false
+            fi
+        fi
+
+    elif [ "$IS_GPU" = true ]; then
+        echo "Testing GPU capacity by attempting instance creation..."
+        echo "   Instance name: $TEST_INSTANCE_NAME"
+        echo "   This will take 10-20 seconds..."
+        echo ""
+
+        # Build accelerator flag if specified
+        ACCEL_FLAG=""
+        if [[ -n "$ACCELERATOR" ]]; then
+            ACCEL_FLAG="--accelerator=type=$ACCELERATOR,count=1"
+        fi
+
+        # Attempt to create a small GPU instance
+        CREATE_OUTPUT=$(gcloud compute instances create $TEST_INSTANCE_NAME \
+            --zone=$ZONE \
+            --machine-type=$MACHINE_TYPE \
+            $ACCEL_FLAG \
+            --boot-disk-size=10GB \
+            --project=$PROJECT 2>&1)
+
+        if echo "$CREATE_OUTPUT" | grep -q "Created"; then
+            echo -e "${GREEN}✅ CAPACITY AVAILABLE: Successfully created test GPU instance${NC}"
+            echo "   Deleting test instance..."
+            gcloud compute instances delete $TEST_INSTANCE_NAME \
+                --zone=$ZONE \
+                --project=$PROJECT \
+                --quiet 2>&1 > /dev/null
+            echo -e "${GREEN}✅ Test instance deleted${NC}"
+        else
+            if echo "$CREATE_OUTPUT" | grep -qi "quota\|QUOTA"; then
+                echo -e "${RED}❌ QUOTA EXCEEDED: Insufficient quota${NC}"
+                ALL_CHECKS_PASSED=false
+            elif echo "$CREATE_OUTPUT" | grep -qi "stockout\|capacity\|ZONE_RESOURCE_POOL_EXHAUSTED"; then
+                echo -e "${RED}❌ STOCKOUT DETECTED: No capacity available in $ZONE${NC}"
+                echo "   Try alternative zones or wait for capacity to become available"
+                ALL_CHECKS_PASSED=false
+            else
+                echo -e "${RED}❌ CAPACITY TEST FAILED${NC}"
+                echo "   Error: $CREATE_OUTPUT"
+                ALL_CHECKS_PASSED=false
+            fi
+        fi
+    fi
+
     echo ""
 fi
 
