@@ -46,7 +46,7 @@ kubectl api-resources | grep gateway.networking.k8s.io
 # Should show: GatewayClass, Gateway, HTTPRoute
 ```
 
-### Step 2: Deploy Minimal Infrastructure (10 min)
+### Step 2: Deploy Minimal Infrastructure (15 min)
 
 ```bash
 cd /home/jhull/devel/llm-d-infra-xks
@@ -55,15 +55,19 @@ cd /home/jhull/devel/llm-d-infra-xks
 podman login registry.redhat.io
 # Enter: Service account credentials
 
-# Deploy ONLY cert-manager (no Istio, no LWS)
+# Deploy ONLY cert-manager (no Istio)
 make deploy-cert-manager
 
 # Verify
 kubectl get pods -n cert-manager
 # Expected: 3 pods Running
+
+# Install LeaderWorkerSet CRDs (required by KServe)
+kubectl apply --server-side -f \
+  https://github.com/kubernetes-sigs/lws/releases/download/v0.4.0/manifests.yaml
 ```
 
-### Step 3: Deploy KServe (5 min)
+### Step 3: Deploy KServe (10 min)
 
 ```bash
 cd /home/jhull/devel/llm-d-infra-xks
@@ -74,12 +78,28 @@ make deploy-kserve
 # Verify
 kubectl get pods -n opendatahub
 # Expected: kserve-controller-manager Running
+
+# CRITICAL FIX: Remove HTTPRoute timeout fields (GKE doesn't support them)
+kubectl get llminferenceserviceconfig kserve-config-llm-router-route \
+  -n opendatahub -o json | \
+  jq 'del(.spec.router.route.http.spec.rules[].timeouts)' | \
+  kubectl apply -f -
+
+# Note: This modifies a well-known config which is not recommended,
+# but necessary for GKE compatibility
 ```
 
-### Step 4: Create GKE Gateway (3 min)
+
+### Step 4: Create GKE Gateway (3-50 min)
+
+⚠️ **Note**: GatewayClasses may take **30-45 minutes** to appear after cluster creation (one-time wait).
 
 ```bash
-# Create Gateway using GKE's native controller
+# Wait for GatewayClasses (if this is first Gateway)
+kubectl get gatewayclass
+# If empty, wait up to 45 min for GKE controller to reconcile
+
+# Create Gateway using REGIONAL GatewayClass (required for InferencePool)
 kubectl apply -f - <<'EOF'
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -87,7 +107,7 @@ metadata:
   name: inference-gateway
   namespace: opendatahub
 spec:
-  gatewayClassName: gke-l7-global-external-managed
+  gatewayClassName: gke-l7-regional-external-managed  # ⚠️ MUST be regional for InferencePool
   listeners:
   - name: http
     protocol: HTTP
@@ -99,7 +119,7 @@ EOF
 
 # Wait for External IP (~2-3 minutes)
 kubectl get gateway inference-gateway -n opendatahub -w
-# Press Ctrl+C when ADDRESS is populated
+# Press Ctrl+C when PROGRAMMED=True and ADDRESS is populated
 
 # Capture Gateway IP
 export GATEWAY_IP=$(kubectl get gateway inference-gateway -n opendatahub \
@@ -107,6 +127,9 @@ export GATEWAY_IP=$(kubectl get gateway inference-gateway -n opendatahub \
 
 echo "Gateway IP: $GATEWAY_IP"
 ```
+
+⚠️ **Critical**: Must use `gke-l7-regional-external-managed` (regional), NOT `gke-l7-global-external-managed` (global).
+Global GatewayClass does not support InferencePool. See [ISSUES.md#10](ISSUES.md#10-gatewayclass-support-for-inferencepool)
 
 ### Step 5: Deploy LLMInferenceService (30 min)
 
@@ -154,6 +177,31 @@ kubectl get httproute -n $NAMESPACE
 
 # Check InferencePool (auto-created)
 kubectl get inferencepool -n $NAMESPACE
+
+# CRITICAL FIX: Apply GKE Service annotation for HTTP protocol
+kubectl annotate service qwen2-3b-pattern1-kserve-workload-svc \
+  -n $NAMESPACE \
+  cloud.google.com/app-protocols='{"8000":"HTTP"}' \
+  --overwrite
+
+# CRITICAL FIX: Update GCP health checks to use /health path
+# Get backend service names
+gcloud compute backend-services list \
+  --filter="name~qwen2" \
+  --project=ecoeng-llmd \
+  --format="value(name)"
+
+# Update InferencePool health check (replace <name> with actual name from above)
+gcloud compute health-checks update http <inferencepool-healthcheck-name> \
+  --region=europe-west4 \
+  --project=ecoeng-llmd \
+  --request-path=/health
+
+# Update Service health check (replace <name> with actual name from above)
+gcloud compute health-checks update https <service-healthcheck-name> \
+  --region=europe-west4 \
+  --project=ecoeng-llmd \
+  --request-path=/health
 ```
 
 ### Step 6: Test Deployment (10 min)

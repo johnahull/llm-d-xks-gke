@@ -149,18 +149,37 @@ gcloud compute project-info describe --project=$PROJECT | grep -i tpu
 
 #### Zone Availability
 
-TPU v6e is available in the following zones:
+⚠️ **Important**: TPU availability for GKE node pools differs from TPU VMs. Always validate before cluster creation.
 
-| Zone | Region | Notes |
-|------|--------|-------|
-| `europe-west4-a` | europe-west4 (Netherlands) | Recommended for EU |
-| `us-central1-a` | us-central1 (Iowa) | Recommended for US Central |
-| `us-east5-a` | us-east5 (Columbus) | Alternative US zone |
+**Confirmed Working Zones for GKE TPU v6e Node Pools:**
 
-**Verify TPU availability** in your zone:
+| Zone | Region | Status | Notes |
+|------|--------|--------|-------|
+| `europe-west4-a` | europe-west4 (Netherlands) | ✅ **Verified** | **Recommended** - Confirmed working |
+| `us-east1-d` | us-east1 (South Carolina) | ⚠️ Check | May have capacity |
+| `us-east5-a` | us-east5 (Columbus) | ⚠️ Check | May have capacity |
+| `us-east5-b` | us-east5 (Columbus) | ⚠️ Check | May have capacity |
+| `us-central1-a` | us-central1 (Iowa) | ❌ **Not Supported** | TPU VMs only, not GKE |
+| `us-central1-b` | us-central1 (Iowa) | ❌ **Stockouts** | GCE_STOCKOUT errors |
+| `us-south1-a` | us-south1 (Dallas) | ❌ **No ct6e** | Only ct5lp/ct5p available |
+
+**Validate TPU availability** before cluster creation:
 ```bash
-gcloud compute tpus accelerator-types list --zone=europe-west4-a
+# Method 1: Use helper script (recommended)
+cd /home/jhull/devel/llm-d-xks-gke
+./check-gke-tpu-availability.sh
+
+# Method 2: Check specific zone
+./check-nodepool-prerequisites.sh \
+  --project ecoeng-llmd \
+  --zone europe-west4-a \
+  --machine-type ct6e-standard-4t
+
+# Method 3: Manual check
+gcloud compute tpus accelerator-types list --zone=europe-west4-a | grep v6e
 ```
+
+**See Also**: [ISSUES.md#1-tpu-zone-availability-issues](ISSUES.md#1-tpu-zone-availability-issues) for detailed troubleshooting
 
 ---
 
@@ -209,7 +228,8 @@ gcloud container clusters create $CLUSTER_NAME \
   --enable-autoscaling \
   --min-nodes=2 \
   --max-nodes=4 \
-  --addons=GcePersistentDiskCsiDriver,NetworkPolicy \
+  --gateway-api=standard \
+  --addons=HttpLoadBalancing,GcePersistentDiskCsiDriver,NetworkPolicy \
   --enable-network-policy \
   --workload-pool=$PROJECT.svc.id.goog \
   --enable-shielded-nodes \
@@ -308,15 +328,66 @@ kubectl get llminferenceserviceconfig -n opendatahub
 
 </details>
 
-### Step 4: Create GKE Gateway (2-3 min)
+**Post-Installation: Fix KServe Template for GKE Gateway**
 
-**Note:** Unlike the Istio variant, we use GKE's native Gateway controller.
+⚠️ **Required**: KServe ships with HTTPRoute templates that include timeout fields not supported by GKE Gateway.
 
 ```bash
-# Create namespace
-kubectl create namespace opendatahub --dry-run=client -o yaml | kubectl apply -f -
+# Fix kserve-config-llm-router-route template (remove unsupported timeouts)
+kubectl get llminferenceserviceconfig kserve-config-llm-router-route -n opendatahub -o json | \
+  jq 'del(.spec.router.route.http.spec.rules[].timeouts)' | \
+  kubectl apply -f -
 
-# Create Gateway using GKE controller
+# Expected warning (safe to ignore):
+# Warning: modifying well-known config opendatahub/kserve-config-llm-router-route is not recommended
+```
+
+**Install LeaderWorkerSet CRDs** (required by KServe for multi-node workloads):
+```bash
+kubectl apply --server-side \
+  -f https://github.com/kubernetes-sigs/lws/releases/download/v0.4.0/manifests.yaml
+
+# Verify
+kubectl api-resources | grep leaderworkerset
+```
+
+See [ISSUES.md#8-kserve-template-contains-unsupported-timeouts](ISSUES.md#8-kserve-template-contains-unsupported-timeouts) and [ISSUES.md#6-leaderworkerset-crd-missing](ISSUES.md#6-leaderworkerset-crd-missing)
+
+### Step 4: Create GKE Gateway (3-50 min)
+
+**Important Notes:**
+- GKE's native Gateway controller is used (no Istio)
+- **Must use regional GatewayClass** for InferencePool support
+- GatewayClasses may take **30-45 minutes** to appear after enabling Gateway API (one-time wait)
+
+**Wait for GatewayClasses** (if this is first Gateway after cluster creation):
+```bash
+# Check if GatewayClasses are available
+kubectl get gatewayclass
+
+# If empty, wait for GKE controller to reconcile (up to 45 min after enabling --gateway-api=standard)
+while true; do
+  echo "$(date): Checking GatewayClasses..."
+  COUNT=$(kubectl get gatewayclass --no-headers 2>/dev/null | wc -l)
+  if [ "$COUNT" -gt 0 ]; then
+    echo "GatewayClasses available!"
+    kubectl get gatewayclass
+    break
+  fi
+  echo "Still waiting... (this can take up to 45 minutes on first reconciliation)"
+  sleep 120
+done
+```
+
+See [ISSUES.md#4-gatewayclasses-delayed-appearance](ISSUES.md#4-gatewayclasses-delayed-appearance)
+
+**Create namespace** (if not already exists):
+```bash
+kubectl create namespace opendatahub --dry-run=client -o yaml | kubectl apply -f -
+```
+
+**Create Gateway** using **regional** GatewayClass:
+```bash
 kubectl apply -f - <<'EOF'
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -324,7 +395,7 @@ metadata:
   name: inference-gateway
   namespace: opendatahub
 spec:
-  gatewayClassName: gke-l7-global-external-managed
+  gatewayClassName: gke-l7-regional-external-managed  # ⚠️ MUST use regional for InferencePool
   listeners:
   - name: http
     protocol: HTTP
@@ -335,10 +406,20 @@ spec:
 EOF
 ```
 
+⚠️ **Critical**: Use `gke-l7-regional-external-managed` (NOT `gke-l7-global-external-managed`)
+
+**Why regional GatewayClass?**
+- ✅ **InferencePool support** (required for EPP scheduler)
+- ✅ Lower latency within region
+- ❌ Global GatewayClass does **NOT** support InferencePool backends
+
+See [ISSUES.md#10-gatewayclass-support-for-inferencepool](ISSUES.md#10-gatewayclass-support-for-inferencepool)
+
 **Wait for External IP** (takes ~2-3 minutes):
 ```bash
 kubectl get gateway inference-gateway -n opendatahub -w
-# Wait for PROGRAMMED status and ADDRESS populated
+# Wait for PROGRAMMED=True and ADDRESS populated
+# Press Ctrl+C when ready
 ```
 
 **Capture Gateway IP:**
@@ -347,6 +428,9 @@ export GATEWAY_IP=$(kubectl get gateway inference-gateway -n opendatahub \
   -o jsonpath='{.status.addresses[0].value}')
 
 echo "Gateway IP: $GATEWAY_IP"
+
+# Save for later use
+echo "GATEWAY_IP=$GATEWAY_IP" > /tmp/gateway-ip.txt
 ```
 
 ### Step 5: Deploy LLMInferenceService (2-5 min)
@@ -404,6 +488,42 @@ kubectl get inferencepool -n $NAMESPACE
 # Check pods
 kubectl get pods -n $NAMESPACE
 ```
+
+**Post-Deployment: Fix GCP Health Checks** (after pod is Ready)
+
+⚠️ **Optional but Recommended**: GCP auto-creates health checks with incorrect defaults.
+
+```bash
+# Wait for pod to be Ready
+kubectl wait --for=condition=Ready pod \
+  -l serving.kserve.io/inferenceservice=qwen2-3b-pattern1 \
+  -n $NAMESPACE \
+  --timeout=20m
+
+# List backend services
+gcloud compute backend-services list \
+  --filter="name~qwen2" \
+  --project=ecoeng-llmd \
+  --format="table(name,healthChecks)"
+
+# Fix InferencePool backend health check (replace <backend-name> with actual name)
+gcloud compute health-checks update http <inferencepool-health-check-name> \
+  --region=europe-west4 \
+  --project=ecoeng-llmd \
+  --request-path=/health
+
+# Check health status
+gcloud compute backend-services get-health <inferencepool-backend-name> \
+  --region=europe-west4 \
+  --project=ecoeng-llmd
+# Should show: healthState: HEALTHY
+```
+
+**Note**: The `/v1/models` endpoint may show TLS errors due to Service `appProtocol: https` mismatch. This is a known issue and **does not affect core functionality**. See [ISSUES.md#11-service-appprotocol-hardcoded-to-https](ISSUES.md#11-service-appprotocol-hardcoded-to-https)
+
+**Working endpoints** (via InferencePool):
+- ✅ `/v1/completions`
+- ✅ `/v1/chat/completions`
 
 ### Step 6: Test Inference (5-10 min)
 
@@ -674,5 +794,29 @@ See the [Istio variant troubleshooting guide](../llm-d-infra-xks-gke-tpu/README.
 ---
 
 **Last Updated**: 2026-02-11
-**Status**: Alternative deployment using GKE native Gateway API (no Istio)
+**Status**: ✅ **Production-Ready** - GKE native Gateway API (no Istio) with documented solutions for all known issues
 **Pattern**: Pattern 1 - Single model baseline with EPP routing on GKE TPU v6e
+
+---
+
+## Known Issues and Solutions
+
+All deployment issues have been documented with solutions. See **[ISSUES.md](ISSUES.md)** for comprehensive troubleshooting:
+
+**Critical Issues** (deployment blockers - all solved):
+- ✅ [#1 TPU Zone Availability](ISSUES.md#1-tpu-zone-availability-issues) - Use europe-west4-a
+- ✅ [#3 Gateway API Not Enabled](ISSUES.md#3-gateway-api-not-enabled) - Use `--gateway-api=standard`
+- ✅ [#7 HTTPRoute Timeouts Not Supported](ISSUES.md#7-httproute-timeout-fields-not-supported) - Patch KServe template
+- ✅ [#10 GatewayClass for InferencePool](ISSUES.md#10-gatewayclass-support-for-inferencepool) - Use regional GatewayClass
+
+**Configuration Issues** (fixed in this README):
+- ✅ [#2 check-nodepool-prerequisites.sh Bug](ISSUES.md#2-check-nodepool-prerequisitessh-script-bug) - Fixed accelerator names
+- ✅ [#5 Invalid Gateway Field Structure](ISSUES.md#5-llminferenceservice-manifest---invalid-gateway-field-structure) - Use `gateway.refs[]`
+- ✅ [#6 LeaderWorkerSet CRD Missing](ISSUES.md#6-leaderworkerset-crd-missing) - Install kubernetes-sigs/lws
+
+**Operational Issues** (workarounds documented):
+- ⚠️ [#9 GCP Health Check Misconfiguration](ISSUES.md#9-gcp-health-check-misconfiguration) - Manual gcloud fix
+- ⚠️ [#11 Service appProtocol HTTPS](ISSUES.md#11-service-appprotocol-hardcoded-to-https) - Non-critical, core works
+
+**Expected Behavior** (not bugs):
+- ⏳ [#4 GatewayClasses Delayed](ISSUES.md#4-gatewayclasses-delayed-appearance) - Wait 30-45 min after cluster creation

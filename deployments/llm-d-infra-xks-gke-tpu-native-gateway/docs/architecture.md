@@ -36,6 +36,28 @@ This deployment architecture combines **minimal infrastructure** (cert-manager o
 - Want comprehensive Istio telemetry
 - Enterprise support for service mesh is important
 
+## Critical Discovery: GatewayClass Support
+
+⚠️ **IMPORTANT**: Not all GKE GatewayClasses support the InferencePool backend.
+
+### GatewayClass Support Matrix
+
+| GatewayClass | InferencePool Support | Use Case |
+|--------------|----------------------|----------|
+| `gke-l7-regional-external-managed` | ✅ **YES** | **Recommended** - External HTTP/HTTPS with regional load balancer |
+| `gke-l7-rilb` | ✅ YES | Internal load balancer (VPC-only access) |
+| `gke-l7-global-external-managed` | ❌ **NO** | Global load balancer - does NOT work with InferencePool |
+
+**Why This Matters**:
+- InferencePool is a Gateway API Inference Extension custom backend
+- Global GatewayClass only supports standard Kubernetes Service backends
+- Regional GatewayClass supports both Service and InferencePool backends
+- Using global class causes HTTPRoute to accept but traffic fails routing
+
+**Lesson Learned**: Always use `gke-l7-regional-external-managed` for InferencePool-based intelligent routing.
+
+See [ISSUES.md#10](../ISSUES.md#10-gatewayclass-support-for-inferencepool) for detailed troubleshooting steps.
+
 ## Architecture Layers
 
 ### Layer 1: Minimal Infrastructure
@@ -78,7 +100,7 @@ This deployment architecture combines **minimal infrastructure** (cert-manager o
 │  │  Gateway (gateway.networking.k8s.io/v1)          │  │
 │  │  - namespace: opendatahub                        │  │
 │  │  - name: inference-gateway                       │  │
-│  │  - class: gke-l7-global-external-managed         │  │
+│  │  - class: gke-l7-regional-external-managed       │  │
 │  │  - listener: HTTP (port 80)                      │  │
 │  │  - NO Gateway pods (native controller)           │  │
 │  └──────────────────────────────────────────────────┘  │
@@ -99,7 +121,8 @@ This deployment architecture combines **minimal infrastructure** (cert-manager o
 ```
 
 **Key Difference**:
-- `gatewayClassName: gke-l7-global-external-managed` (not `istio`)
+- `gatewayClassName: gke-l7-regional-external-managed` (not `istio` or global)
+- **CRITICAL**: Must use regional GatewayClass - global does NOT support InferencePool
 - No Istio Gateway pods - GKE controller runs in control plane
 - Direct HTTP (no Envoy sidecars)
 
@@ -504,7 +527,7 @@ kubectl delete gateway inference-gateway -n opendatahub
 cd /home/jhull/devel/llm-d-infra-xks
 make undeploy-istio
 
-# 4. Create GKE Gateway
+# 4. Create GKE Gateway (MUST use regional class)
 kubectl apply -f - <<EOF
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -512,7 +535,7 @@ metadata:
   name: inference-gateway
   namespace: opendatahub
 spec:
-  gatewayClassName: gke-l7-global-external-managed
+  gatewayClassName: gke-l7-regional-external-managed  # CRITICAL: regional, not global
   listeners:
   - name: http
     protocol: HTTP

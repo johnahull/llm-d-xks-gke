@@ -86,10 +86,12 @@ if ! command -v jq &> /dev/null; then
     echo ""
 fi
 
-# Pre-flight check
+# Pre-flight check (use completion endpoint - /v1/models has known TLS errors)
 echo -n "Pre-flight: Checking endpoint... "
-PREFLIGHT=$(curl -s $CURL_OPTS -X GET "$BASE_URL${BASE_URL_PREFIX}/v1/models" \
-  --connect-timeout 10 --max-time 10 -w "%{http_code}" -o /dev/null 2>/dev/null || echo "000")
+PREFLIGHT=$(curl -s $CURL_OPTS -X POST "$BASE_URL${BASE_URL_PREFIX}/v1/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "/mnt/models", "prompt": "test", "max_tokens": 1}' \
+  --connect-timeout 10 --max-time 30 -w "%{http_code}" -o /dev/null 2>/dev/null || echo "000")
 
 if [ "$PREFLIGHT" = "200" ]; then
     echo -e "${GREEN}✓ OK${NC}"

@@ -87,8 +87,10 @@ export REGION=europe-west4
 ```
 
 **Zone Selection**:
-- `europe-west4-a` (Netherlands) - Lower latency for EU
-- `us-central1-a` (Iowa) - Lower cost, higher TPU availability
+- `europe-west4-a` (Netherlands) - ✅ **Recommended** - Confirmed working with TPU v6e
+- ~~`us-central1-a` (Iowa)~~ - ❌ **Not supported** - TPU VMs only, not GKE node pools
+
+⚠️ **Important**: TPU v6e availability on GKE is limited. See [Zone Availability](../README.md#zone-availability) for confirmed working zones.
 
 ### 1.2 Run Cluster Creation Script
 
@@ -306,6 +308,8 @@ kubectl get gatewayclass
 
 **Note**: These are built into GKE 1.34+ (no installation needed)
 
+⚠️ **CRITICAL**: You **MUST** use `gke-l7-regional-external-managed` for InferencePool support. The global class does NOT support InferencePool backends. See [architecture.md](architecture.md#critical-discovery-gatewayclass-support) for details.
+
 ### 4.2 Create Gateway
 
 ```bash
@@ -316,7 +320,7 @@ metadata:
   name: inference-gateway
   namespace: opendatahub
 spec:
-  gatewayClassName: gke-l7-global-external-managed
+  gatewayClassName: gke-l7-regional-external-managed
   listeners:
   - name: http
     protocol: HTTP
@@ -328,9 +332,11 @@ EOF
 ```
 
 **Configuration**:
-- `gatewayClassName: gke-l7-global-external-managed` - GKE's native Gateway controller
+- `gatewayClassName: gke-l7-regional-external-managed` - **MUST be regional** (not global) for InferencePool support
 - `namespace: opendatahub` - Same namespace KServe uses
 - `allowedRoutes.namespaces.from: All` - Allow HTTPRoutes from any namespace
+
+**Why Regional?**: Global GatewayClass only supports standard Service backends. Regional supports both Service and InferencePool (required for EPP routing).
 
 ### 4.3 Wait for External IP
 
@@ -344,7 +350,7 @@ kubectl get gateway inference-gateway -n opendatahub -w
 **Expected Output**:
 ```
 NAME                CLASS                            ADDRESS         PROGRAMMED   AGE
-inference-gateway   gke-l7-global-external-managed   34.x.x.x        True         2m
+inference-gateway   gke-l7-regional-external-managed   34.x.x.x        True         2m
 ```
 
 ### 4.4 Capture Gateway IP
@@ -664,8 +670,10 @@ kubectl get gatewayclass
    - Solution: Verify GKE version 1.34+ (`kubectl version`)
 2. **GCP Load Balancer quota exhausted**
    - Solution: Check GCP quotas, delete unused LBs
-3. **Wrong GatewayClass**
-   - Solution: Verify `gatewayClassName: gke-l7-global-external-managed`
+3. **Wrong GatewayClass** (using global instead of regional)
+   - Solution: **CRITICAL** - Must use `gke-l7-regional-external-managed`, NOT global
+   - Global class does NOT support InferencePool backends
+   - See [ISSUES.md#10](../ISSUES.md#10-gatewayclass-support-for-inferencepool)
 
 **Verification**:
 ```bash

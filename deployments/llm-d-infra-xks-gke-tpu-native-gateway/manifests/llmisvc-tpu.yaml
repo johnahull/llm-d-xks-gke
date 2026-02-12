@@ -11,13 +11,14 @@ spec:
 
   # Router configuration
   # KServe controller auto-creates HTTPRoute and InferencePool with EPP scheduler
-  # References GKE Gateway (not Istio Gateway)
+  # Uses GKE regional Gateway (gke-l7-regional-external-managed) for InferencePool support
+  # Note: Global Gateway class does NOT support InferencePool
   router:
     route: {}      # Auto-create HTTPRoute
     gateway:
-      name: inference-gateway
-      namespace: opendatahub
-      # Note: GKE Gateway uses gatewayClassName: gke-l7-global-external-managed
+      refs:
+      - name: inference-gateway
+        namespace: opendatahub
     scheduler: {}  # Enable EPP scheduler for intelligent routing
 
   # vLLM container template

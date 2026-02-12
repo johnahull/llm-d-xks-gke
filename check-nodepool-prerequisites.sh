@@ -190,11 +190,11 @@ if [ "$IS_TPU" = true ]; then
     # Check TPU accelerator type
     TPU_VERSION=""
     if [[ "$MACHINE_TYPE" =~ ct6e ]]; then
-        TPU_VERSION="tpu-v6e-slice"
+        TPU_VERSION="tpu-v6e"
     elif [[ "$MACHINE_TYPE" =~ ct5e ]]; then
         TPU_VERSION="tpu-v5e"
     elif [[ "$MACHINE_TYPE" =~ ct5p ]]; then
-        TPU_VERSION="tpu-v5p-slice"
+        TPU_VERSION="tpu-v5p"
     fi
 
     if [[ -n "$TPU_VERSION" ]]; then
