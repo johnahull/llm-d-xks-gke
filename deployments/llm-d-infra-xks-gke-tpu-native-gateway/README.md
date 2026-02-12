@@ -28,7 +28,12 @@ This deployment supports two patterns:
 - **Cost:** ~$133/day (~$3,990/month)
 - **Use case:** Development, POC, low-traffic production
 
-**Status:** Deployed and validated (see DEPLOYMENT-COMPLETE.txt)
+**Status:** ✅ Deployed and validated
+
+**Documentation:**
+- [HELM-DEPLOYMENT-GUIDE.md](HELM-DEPLOYMENT-GUIDE.md) - Complete Helm-based deployment guide
+- [DEPLOYMENT-SUMMARY.md](DEPLOYMENT-SUMMARY.md) - Current deployment status and configuration
+- [HTTP-PROTOCOL-FIX.md](HTTP-PROTOCOL-FIX.md) - Service backend HTTPS limitation analysis
 
 **Deploy:**
 ```bash
@@ -88,6 +93,7 @@ kubectl apply -f manifests/llmisvc-tpu-pattern3.yaml
 | Gateway Controller | Istio Gateway | GKE Gateway (built-in) |
 | Infrastructure Pods | cert-manager + Istio + LWS (~6 pods) | cert-manager + KServe (~4 pods) |
 | mTLS between services | ✅ Automatic | ❌ Not included |
+| Service backend endpoints | ✅ All work (Istio handles TLS) | ⚠️ `/health`, `/v1/models` have TLS errors |
 | Observability | ✅ Istio telemetry | Basic (Kubernetes metrics) |
 | Resource Usage | Higher | **Lower** ✅ |
 | Deployment Complexity | Moderate | **Simpler** ✅ |
@@ -101,6 +107,7 @@ kubectl apply -f manifests/llmisvc-tpu-pattern3.yaml
 
 **When to use Istio variant instead:**
 - Need mTLS between services
+- Need all endpoints (including `/health`, `/v1/models`) routable via Gateway
 - Require advanced traffic management (retries, circuit breakers, etc.)
 - Want comprehensive observability (Istio telemetry)
 - Multi-cluster or hybrid cloud deployment
@@ -935,7 +942,7 @@ See the [Istio variant troubleshooting guide](../llm-d-infra-xks-gke-tpu/README.
 ---
 
 **Last Updated**: 2026-02-12
-**Status**: ✅ **Production-Ready** - GKE native Gateway API (no Istio) with Helm-based KServe deployment
+**Status**: ✅ **Production-Ready** - GKE native Gateway API (no Istio) with Helm-based KServe deployment. Known limitation: `/health` and `/v1/models` not routable via Gateway (KServe assumes Istio for TLS handling)
 **KServe Version**: 3.4.0-ea.1 (deployed via rhaii-xks-kserve Helm chart)
 **Pattern**: Pattern 1 - Single model baseline with EPP routing on GKE TPU v6e
 
@@ -956,9 +963,10 @@ All deployment issues have been documented with solutions. See **[ISSUES.md](ISS
 - ✅ [#5 Invalid Gateway Field Structure](ISSUES.md#5-llminferenceservice-manifest---invalid-gateway-field-structure) - Use `gateway.refs[]`
 - ✅ [#6 LeaderWorkerSet CRD Missing](ISSUES.md#6-leaderworkerset-crd-missing) - Install kubernetes-sigs/lws
 
-**Operational Issues** (workarounds documented):
+**Known Limitations** (accepted, documented):
 - ⚠️ [#9 GCP Health Check Misconfiguration](ISSUES.md#9-gcp-health-check-misconfiguration) - Manual gcloud fix
-- ⚠️ [#11 Service appProtocol HTTPS](ISSUES.md#11-service-appprotocol-hardcoded-to-https) - Non-critical, core works
+- ⚠️ [#11 Service appProtocol HTTPS](ISSUES.md#11-service-appprotocol-hardcoded-to-https) - KServe assumes Istio; `/health` and `/v1/models` have TLS errors via Gateway (inference endpoints unaffected)
+- ⚠️ [#15 Service Backend HTTPS Mismatch](ISSUES.md#15-service-backend-https-protocol-mismatch) - Same root cause as #11, fully documented in [HTTP-PROTOCOL-FIX.md](HTTP-PROTOCOL-FIX.md)
 
 **Expected Behavior** (not bugs):
 - ⏳ [#4 GatewayClasses Delayed](ISSUES.md#4-gatewayclasses-delayed-appearance) - Wait 30-45 min after cluster creation

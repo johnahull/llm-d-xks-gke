@@ -240,24 +240,15 @@ KServe global configuration has `urlScheme: https` which forces all Services to 
      --type='json' -p='[{"op": "replace", "path": "/spec/ports/0/appProtocol", "value": "http"}]'
    ```
 
-3. ✅ **Use GKE Service annotation to override protocol**
-   ```bash
-   kubectl annotate service qwen2-3b-pattern1-kserve-workload-svc \
-     -n llm-d-inference-scheduling \
-     cloud.google.com/app-protocols='{"8000":"HTTP"}' \
-     --overwrite
-   ```
+3. ❌ **GKE Service annotation** - `cloud.google.com/app-protocols` only works for Ingress, not Gateway API
 
-**Workaround Status:**
+**Status:** Known Limitation (Accepted) - See Issue #15 for full analysis.
+
 - ✅ **Completions endpoints WORK** - Use InferencePool backend (HTTP, healthy)
 - ❌ **Health/models endpoints FAIL** - Use Service backend (HTTPS, TLS errors)
+- **Workaround:** Direct pod access or `kubectl port-forward` for non-inference endpoints
 
-**Why This Is Acceptable:**
-- Core functionality (completions via InferencePool) works perfectly
-- Health/models endpoints can be accessed directly from pods if needed
-- In production, would add TLS termination at Gateway frontend, not backend
-
-**Impact:** MEDIUM - Non-critical endpoints affected, core API functional
+**Impact:** LOW - Non-critical endpoints affected, core inference API fully functional
 
 ---
 
@@ -354,14 +345,14 @@ File feedback with Google Cloud documentation team to clarify:
 4. ✅ Enable Gateway API on cluster (`--gateway-api=standard`)
 5. ✅ Install LeaderWorkerSet CRDs
 
-### Workarounds Applied:
-1. ✅ GKE Service annotation for HTTP protocol override
-2. ✅ Accept Service backend TLS errors (non-critical endpoints)
+### Known Limitations (Accepted):
+1. ⚠️ `/health` and `/v1/models` endpoints have TLS errors via Gateway (KServe `appProtocol: https` incompatible with GKE Gateway API without Istio)
+2. ⚠️ Health checks show "Invalid HTTP request" warnings (normal - HTTPS health check hitting HTTP endpoint)
 
-### Documented Limitations:
-1. ⚠️ `/health` and `/v1/models` endpoints have TLS errors (Service backend)
-2. ⚠️ Completions endpoints fully functional (InferencePool backend)
-3. ⚠️ Health checks show "Invalid HTTP request" warnings (normal)
+### Unaffected Functionality:
+1. ✅ `/v1/completions` and `/v1/chat/completions` fully functional (InferencePool backend uses HTTP)
+2. ✅ GCP health checks work independently via HealthCheckPolicy CRDs
+3. ✅ `/health` and `/v1/models` accessible via direct pod access or port-forward
 
 ---
 
@@ -369,10 +360,12 @@ File feedback with Google Cloud documentation team to clarify:
 
 1. **Always verify GatewayClass capabilities** - Not all classes support all features
 2. **Regional vs Global matters** - InferencePool only works with regional LBs
-3. **GKE != Kubernetes** - GKE has specific limitations (timeout fields)
+3. **GKE != Kubernetes** - GKE has specific limitations (timeout fields, annotation behavior)
 4. **Health checks need customization** - Defaults rarely match application needs
-5. **KServe is opinionated** - Reconciles Service config aggressively
-6. **Test incrementally** - Each component should be verified before proceeding
+5. **KServe assumes Istio** - Designed for service mesh; `appProtocol: https` causes issues without Istio
+6. **KServe is opinionated** - Reconciles Service config aggressively, overriding external modifications
+7. **GKE Ingress != Gateway API** - `cloud.google.com/app-protocols` annotation only works for Ingress, not Gateway API
+8. **Test incrementally** - Each component should be verified before proceeding
 
 ---
 
@@ -545,6 +538,81 @@ Updated PATTERN3.md with correct scorer configuration and architecture diagrams.
 
 ---
 
+## Pattern 1 Helm Deployment Issues
+
+### Issue #15: Service Backend HTTPS Protocol Mismatch (Pattern 1)
+
+**Problem:**
+Service backend endpoints (`/health`, `/v1/models`) return TLS errors when accessed via Gateway:
+```
+upstream connect error or disconnect/reset before headers.
+transport failure reason: TLS_error:|268435703:SSL routines:OPENSSL_internal:WRONG_VERSION_NUMBER:TLS_error_end
+```
+
+**Root Cause:**
+1. KServe controller creates Services with `appProtocol: https` and `name: https` (hardcoded in Go code)
+2. GKE Gateway API reads this and configures GCP backend service for HTTPS
+3. vLLM serves HTTP only (not HTTPS), causing TLS handshake to fail
+4. Both KServe controller and GKE reconcile their resources back to HTTPS every 5-10 minutes
+
+**Affected Endpoints:**
+- ❌ `/health` - Returns TLS error (routes through Service backend)
+- ❌ `/v1/models` - Returns TLS error (routes through Service backend)
+- ✅ `/v1/completions` - Works perfectly (routes through InferencePool backend with HTTP)
+- ✅ `/v1/chat/completions` - Works perfectly (routes through InferencePool backend with HTTP)
+
+**Why InferencePool Works:**
+InferencePool backends use headless services without `appProtocol`, so GKE defaults to HTTP. Only the ClusterIP Service (for non-inference endpoints) has the HTTPS protocol issue.
+
+**Solutions Considered:**
+
+1. **❌ Modify Kubernetes Service** - KServe controller reconciles it back immediately
+2. **❌ Mutating Admission Webhook** - Complex, doesn't prevent controller reconciliation
+3. **❌ Configure vLLM for HTTPS** - vLLM doesn't support HTTPS natively
+4. **❌ Fork KServe controller** - Maintenance burden, must merge upstream changes
+5. **❌ Kyverno admission controller** - KServe reconciles `appProtocol` back after Kyverno mutation; `cloud.google.com/app-protocols` annotation only works for Ingress, not Gateway API
+6. **❌ GCPBackendPolicy CRD** - No protocol override field available
+
+**Root Cause Analysis:**
+
+KServe was designed for **Istio service mesh environments** where Istio sidecar proxies handle TLS termination transparently. The `appProtocol: https` setting tells Istio to encrypt service-to-service traffic via mTLS, but the application (vLLM) never needs to implement HTTPS.
+
+Without Istio, GKE Gateway API reads `appProtocol: https` directly and tries to connect to vLLM over HTTPS, which fails because vLLM only speaks HTTP.
+
+**Decision: Accept Limitation**
+
+This is an inherent incompatibility between KServe's Istio-oriented design and GKE native Gateway API. Since inference endpoints work perfectly via InferencePool backends, the limitation is acceptable.
+
+**Workarounds for non-inference endpoints:**
+```bash
+# Direct pod access
+POD_IP=$(kubectl get pod -n llm-d-inference-scheduling \
+  -l app.kubernetes.io/component=workload \
+  -o jsonpath='{.items[0].status.podIP}')
+kubectl run -it --rm --image=curlimages/curl test -- curl http://$POD_IP:8000/health
+
+# Port forwarding
+kubectl port-forward -n llm-d-inference-scheduling \
+  svc/qwen2-3b-pattern1-kserve-workload-svc 8000:8000
+curl http://localhost:8000/health
+curl http://localhost:8000/v1/models
+```
+
+**Permanent fix options (if needed in future):**
+1. Deploy Istio service mesh (KServe's intended environment)
+2. Add TLS termination sidecar (nginx/envoy) to vLLM pods
+3. Contribute configurable `appProtocol` option to upstream KServe
+
+**Impact:** LOW - Only affects debugging/monitoring endpoints; core inference fully functional
+
+**Status:** Known Limitation (Accepted)
+
+**Documentation:** See [HTTP-PROTOCOL-FIX.md](HTTP-PROTOCOL-FIX.md) for full analysis
+
+**Date:** 2026-02-12
+
+---
+
 ## Pattern 3 Summary
 
 **Deployment Date:** 2026-02-12
@@ -563,7 +631,30 @@ None - Pattern 3 is fully operational and ready for production use
 
 ---
 
+## Pattern 1 Helm Deployment Summary
+
+**Deployment Date:** 2026-02-12
+**Deployment Method:** Helm chart (rhaii-xks-kserve)
+**KServe Version:** v0.15 (quay.io/opendatahub development images)
+**Replicas:** 1× TPU v6e-4 (4 chips)
+**Status:** ✅ OPERATIONAL (inference endpoints working)
+
+**Critical Fixes Applied:**
+1. ✅ Replaced non-existent registry.redhat.io SHA digests with quay.io images (controller, storage-initializer, scheduler, agent, router)
+2. ✅ Changed scheduler image from :latest to :v0.4 for CLI flag compatibility
+3. ✅ Updated probe schemes from HTTPS to HTTP in LLMInferenceServiceConfig templates
+4. ✅ Created RSA 2048-bit CA certificate (KServe expects RSA, not ECDSA)
+5. ✅ Applied HealthCheckPolicy CRDs for proper health check configuration
+
+**Known Limitation:**
+- `/health` and `/v1/models` return TLS errors via Gateway (KServe sets `appProtocol: https`, vLLM serves HTTP only)
+- This is an inherent KServe/GKE Gateway API incompatibility (KServe assumes Istio service mesh)
+- Inference endpoints (`/v1/completions`, `/v1/chat/completions`) work perfectly via InferencePool
+- See Issue #15 and [HTTP-PROTOCOL-FIX.md](HTTP-PROTOCOL-FIX.md) for full analysis
+
+---
+
 **Last Updated:** 2026-02-12
 **Deployment Status:**
-- **Pattern 1:** ✅ SUCCESSFUL (core functionality working)
-- **Pattern 3:** ✅ FULLY OPERATIONAL (all backends healthy, Gateway routing confirmed working)
+- **Pattern 1 (Helm):** ✅ OPERATIONAL (inference working; `/health` and `/v1/models` have known HTTPS limitation - see Issue #15)
+- **Pattern 3 (Kustomize):** ✅ OPERATIONAL (inference working; same HTTPS limitation applies to Service backend endpoints)
