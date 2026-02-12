@@ -1,0 +1,104 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: qwen2-3b-pattern3
+  namespace: llm-d-inference-scheduling
+spec:
+  model:
+    uri: hf://Qwen/Qwen2.5-3B-Instruct
+    name: Qwen/Qwen2.5-3B-Instruct
+  replicas: 3  # Pattern 3: scale-out with 3 replicas for high throughput
+
+  # Router configuration
+  # KServe controller auto-creates HTTPRoute and InferencePool with EPP scheduler
+  # Uses GKE regional Gateway (gke-l7-regional-external-managed) for InferencePool support
+  # EPP scheduler provides intelligent routing with prefix-cache awareness
+  router:
+    route: {}      # Auto-create HTTPRoute
+    gateway:
+      refs:
+      - name: inference-gateway
+        namespace: opendatahub
+    scheduler: {}  # Enable EPP scheduler for intelligent routing with prefix cache awareness
+
+  # vLLM container template
+  template:
+    # TPU node selection (required by GKE Warden)
+    nodeSelector:
+      cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+      cloud.google.com/gke-tpu-topology: 2x2  # 4 chips, single-host
+
+    # Tolerate TPU node pool taint
+    tolerations:
+    - key: google.com/tpu
+      operator: Equal
+      value: present
+      effect: NoSchedule
+
+    containers:
+    - name: main
+      image: registry.redhat.io/rhaiis/vllm-tpu-rhel9:3.2.5
+
+      # vLLM command (KServe wraps this with /bin/bash -c)
+      # Model downloaded by init container to /mnt/models
+      # vLLM serves HTTP directly (no TLS sidecars)
+      # Pattern 3 additions:
+      #   --enable-prefix-caching: Enable KV cache prefix sharing
+      #   --prefix-cache-block-size=16: Cache granularity (16 tokens per block)
+      args:
+      - |
+        python3 -m vllm.entrypoints.openai.api_server \
+          --model=/mnt/models \
+          --dtype=half \
+          --max-model-len=2048 \
+          --tensor-parallel-size=4 \
+          --enable-prefix-caching \
+          --prefix-cache-block-size=16 \
+          --disable-log-requests
+
+      # TPU environment variables
+      env:
+      - name: TPU_CHIPS_PER_HOST_BOUNDS
+        value: "2,2,1"  # 2x2 topology for 4 chips (X,Y,Z)
+      - name: TPU_HOST_BOUNDS
+        value: "1,1,1"  # Single host
+      - name: PJRT_DEVICE
+        value: "TPU"
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: hf-token
+            key: HF_TOKEN
+
+      # Resource allocation
+      # Pattern 3 requires 3 nodes × 4 chips each = 12 total TPU chips
+      resources:
+        limits:
+          google.com/tpu: "4"  # Per replica: MUST request all 4 chips
+        requests:
+          google.com/tpu: "4"
+
+      # Health probes (HTTP - no sidecars, no service mesh)
+      # Extended delays for TPU initialization + model download + XLA compilation
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 240  # TPU init (2-3 min) + model download + compilation
+        periodSeconds: 30
+        timeoutSeconds: 30
+        failureThreshold: 5
+
+      readinessProbe:
+        httpGet:
+          path: /v1/models
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 240
+        periodSeconds: 10
+        timeoutSeconds: 10
+
+    # Pull secret (must be copied to namespace from cert-manager)
+    imagePullSecrets:
+    - name: redhat-pull-secret

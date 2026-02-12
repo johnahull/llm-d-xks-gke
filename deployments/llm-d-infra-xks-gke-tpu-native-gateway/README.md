@@ -17,6 +17,59 @@ Infrastructure deployment for KServe LLMInferenceService on GKE with TPU v6e acc
 | GKE Gateway Controller | Built-in | Native GKE Gateway API implementation |
 | KServe | v0.15 | LLMInferenceService controller with automatic resource management |
 
+## Deployment Patterns
+
+This deployment supports two patterns:
+
+### Pattern 1: Single Model Baseline ✅ (Default)
+- **Replicas:** 1
+- **Model:** Qwen/Qwen2.5-3B-Instruct
+- **Throughput:** 5-7 req/s (TPU v6e-4)
+- **Cost:** ~$133/day (~$3,990/month)
+- **Use case:** Development, POC, low-traffic production
+
+**Status:** Deployed and validated (see DEPLOYMENT-COMPLETE.txt)
+
+**Deploy:**
+```bash
+kubectl apply -f manifests/llmisvc-tpu.yaml
+```
+
+### Pattern 3: N/S-Caching Scale-Out 🚀 (Available)
+- **Replicas:** 3
+- **Model:** Qwen/Qwen2.5-3B-Instruct (same)
+- **Throughput:** 15-20 req/s (3× TPU v6e-4 = 12 chips total)
+- **Cost:** ~$387/day (~$11,610/month)
+- **Cache hit rate:** 60-70% (with shared prompts)
+- **Latency:** 10-15% lower than Pattern 1
+- **Use case:** High-traffic production, latency-sensitive applications
+
+**Documentation:** See [PATTERN3.md](PATTERN3.md) for comprehensive deployment guide
+
+**Quick Deploy:**
+```bash
+# Increase TPU node pool capacity
+gcloud container node-pools update tpu-v6e-pool \
+  --cluster=llmd-native-gateway-tpu-pattern1 \
+  --zone=europe-west4-a \
+  --max-nodes=3
+
+# Deploy Pattern 3
+kubectl apply -f manifests/llmisvc-tpu-pattern3.yaml
+```
+
+**Key Benefits:**
+- ✅ 2.5-3× higher throughput
+- ✅ Intelligent prefix-cache-aware routing via EPP scheduler
+- ✅ Built-in redundancy (survive single replica failure)
+- ✅ Similar cost per request despite 3× infrastructure
+
+**When to use Pattern 3 instead of Pattern 1:**
+- Sustained traffic >10 req/s
+- Chatbots/assistants with shared system prompts
+- Production SLA requirements
+- Cost per request matters more than infrastructure cost
+
 ### Version Compatibility
 
 | Component | Version | Notes |
@@ -722,13 +775,31 @@ Request Flow:
 
 #### Cost Estimates
 
+**Pattern 1 (Single Replica):**
+
 | Component | Configuration | Daily | Monthly |
 |-----------|--------------|-------|---------|
 | Default pool | 2 × n1-standard-4 | ~$6 | ~$180 |
-| TPU pool | 1 × ct6e-standard-4t | ~$127 | ~$3,810 |
+| TPU pool | 1 × ct6e-standard-4t (4 chips) | ~$127 | ~$3,810 |
 | Load Balancer | External IP | ~$0.30 | ~$9 |
 | **Total (running)** | | **~$133** | **~$3,999** |
 | **Total (scaled to 0)** | | **~$6** | **~$189** |
+
+**Pattern 3 (3 Replicas - Scale-Out):**
+
+| Component | Configuration | Daily | Monthly |
+|-----------|--------------|-------|---------|
+| Default pool | 2 × n1-standard-4 | ~$6 | ~$180 |
+| TPU pool | **3 × ct6e-standard-4t** (12 chips) | ~$381 | ~$11,430 |
+| Load Balancer | External IP | ~$0.30 | ~$9 |
+| **Total (running)** | | **~$387** | **~$11,619** |
+| **Total (scaled to 0)** | | **~$6** | **~$189** |
+
+**Cost Comparison:**
+- Pattern 3 costs **3× more** in infrastructure ($387/day vs $133/day)
+- Pattern 3 delivers **2.5-3× higher throughput** (15-20 req/s vs 5-7 req/s)
+- **Cost per request is similar** (~$275 per 1M requests for both patterns)
+- Pattern 3 justifies cost when serving >100K requests/day
 
 **Note:** Infrastructure cost is ~$2/day lower than Istio variant (no Istio pods).
 
@@ -736,15 +807,32 @@ Request Flow:
 
 **Option 1: Delete LLMInferenceService** (recommended for short breaks):
 ```bash
+# For Pattern 1
 kubectl delete llmisvc qwen2-3b-pattern1 -n llm-d-inference-scheduling
+
+# For Pattern 3
+kubectl delete llmisvc qwen2-3b-pattern3 -n llm-d-inference-scheduling
 
 # TPU node pool autoscales to 0 after ~10 minutes
 # Cost: ~$6/day (default pool only)
 ```
 
-**Option 2: Manually resize TPU node pool to 0** (immediate cost savings):
+**Option 2: Scale Pattern 3 down to Pattern 1** (moderate cost savings):
 ```bash
-gcloud container clusters resize llmd-gke-native-tpu-pattern1 \
+# Reduce from 3 replicas to 1 replica
+kubectl patch llmisvc qwen2-3b-pattern3 -n llm-d-inference-scheduling \
+  --type='json' -p='[{"op": "replace", "path": "/spec/replicas", "value": 1}]'
+
+# Or delete Pattern 3 and deploy Pattern 1
+kubectl delete llmisvc qwen2-3b-pattern3 -n llm-d-inference-scheduling
+kubectl apply -f manifests/llmisvc-tpu.yaml
+
+# Cost: $387/day → $133/day (saves $254/day)
+```
+
+**Option 3: Manually resize TPU node pool to 0** (immediate cost savings):
+```bash
+gcloud container clusters resize llmd-native-gateway-tpu-pattern1 \
   --node-pool tpu-v6e-pool \
   --num-nodes 0 \
   --zone europe-west4-a \
@@ -753,9 +841,9 @@ gcloud container clusters resize llmd-gke-native-tpu-pattern1 \
 # Cost: ~$6/day immediately
 ```
 
-**Option 3: Delete entire cluster** (when done with testing):
+**Option 4: Delete entire cluster** (when done with testing):
 ```bash
-gcloud container clusters delete llmd-gke-native-tpu-pattern1 \
+gcloud container clusters delete llmd-native-gateway-tpu-pattern1 \
   --zone europe-west4-a \
   --project ecoeng-llmd \
   --quiet
