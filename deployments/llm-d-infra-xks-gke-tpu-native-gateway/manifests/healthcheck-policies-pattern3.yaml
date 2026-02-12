@@ -1,0 +1,62 @@
+# GKE HealthCheckPolicy for Pattern 3
+# Configures GCP health checks to use correct path (/health) and protocol (HTTP)
+#
+# Background:
+# - GKE Gateway API auto-creates health checks for backends
+# - Default configuration uses path="/" which doesn't exist on vLLM
+# - Without HealthCheckPolicy, manual gcloud updates get reset by GKE reconciliation
+# - This is the Kubernetes-native way to configure GCP health checks
+#
+# References:
+# - https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources#health_check
+# - Pattern 1 working example: qwen2-health-check, qwen2-inferencepool-health-check
+---
+# HealthCheckPolicy for Service backend
+# Used by HTTPRoute rule #3 (non-inference endpoints like /v1/models, /health)
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: qwen2-pattern3-health-check
+  namespace: llm-d-inference-scheduling
+spec:
+  default:
+    checkIntervalSec: 15
+    config:
+      type: HTTP  # vLLM serves HTTP, not HTTPS
+      httpHealthCheck:
+        port: 8000
+        requestPath: /health  # vLLM health endpoint
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    timeoutSec: 15
+    logConfig:
+      enabled: true
+  targetRef:
+    group: ""
+    kind: Service
+    name: qwen2-3b-pattern3-kserve-workload-svc
+---
+# HealthCheckPolicy for InferencePool backend
+# Used by HTTPRoute rules #1 and #2 (inference endpoints via InferencePool)
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: qwen2-pattern3-inferencepool-health-check
+  namespace: llm-d-inference-scheduling
+spec:
+  default:
+    checkIntervalSec: 15
+    config:
+      type: HTTP  # vLLM serves HTTP, not HTTPS
+      httpHealthCheck:
+        port: 8000  # vLLM port on pods (not service port 54321)
+        requestPath: /health  # vLLM health endpoint
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    timeoutSec: 15
+    logConfig:
+      enabled: true
+  targetRef:
+    group: ""
+    kind: Service
+    name: qwen2-3b-pattern3-inference-pool-ip-6a587483

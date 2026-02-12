@@ -21,6 +21,7 @@ kubectl apply -f llmisvc-tpu.yaml
 **TPU Variant (High Performance):**
 ```bash
 kubectl apply -f llmisvc-tpu-pattern3.yaml
+kubectl apply -f healthcheck-policies-pattern3.yaml  # Required for Gateway health checks
 ```
 - **Replicas:** 3
 - **Accelerator:** 3× TPU v6e-4 (12 chips total)
@@ -28,6 +29,7 @@ kubectl apply -f llmisvc-tpu-pattern3.yaml
 - **Cost:** ~$387/day (~$11,610/month)
 - **Cache hit rate:** 60-70% (with shared prompts)
 - **Use case:** High-traffic production, latency-sensitive applications
+- **Note:** Requires HealthCheckPolicy CRDs to configure GKE Gateway health checks
 
 **GPU Variant (Cost-Effective):**
 ```bash
@@ -138,6 +140,15 @@ gcloud container node-pools update tpu-v6e-pool \
 
 # Deploy Pattern 3
 kubectl apply -f llmisvc-tpu-pattern3.yaml
+
+# Apply HealthCheckPolicy for proper Gateway health check configuration
+kubectl apply -f healthcheck-policies-pattern3.yaml
+
+# Verify health check policies attached
+kubectl get healthcheckpolicy -n llm-d-inference-scheduling
+
+# Wait 2-3 minutes for all pods to become Ready and backends to become HEALTHY
+kubectl get pods -n llm-d-inference-scheduling -w
 ```
 
 ### Deploy Pattern 3 (GPU) for Cost Savings
