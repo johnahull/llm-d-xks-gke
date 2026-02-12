@@ -39,7 +39,7 @@ kubectl version --client    # Need 1.28+
 gcloud version             # Need latest
 ```
 
-**Note**: No Helm required for this variant (KServe uses kubectl only)
+**Note**: Helm v3.17+ required for deploying KServe via Helm chart
 
 ### Required Credentials
 
@@ -249,26 +249,49 @@ kubectl get pods -n cert-manager
 
 ---
 
-## Phase 3: Deploy KServe Controller (5 min)
+## Phase 3: Deploy KServe Controller via Helm Chart (5 min)
 
-### 3.1 Deploy KServe
+### 3.1 Clone Helm Chart Repository
 
 ```bash
-cd /home/jhull/devel/llm-d-infra-xks
+# Clone the rhaii-xks-kserve Helm chart (if not already cloned)
+cd /home/jhull/devel
+git clone https://github.com/pierdipi/rhaii-xks-kserve.git
+```
 
-# Deploy KServe controller
-make deploy-kserve
+### 3.2 Deploy KServe via Helm
+
+```bash
+# Create opendatahub namespace
+kubectl create namespace opendatahub --dry-run=client -o yaml | kubectl apply -f -
+
+# Copy Red Hat pull secret to opendatahub namespace
+kubectl get secret redhat-pull-secret -n cert-manager -o yaml | \
+  sed 's/namespace: cert-manager/namespace: opendatahub/' | \
+  kubectl apply -f -
+
+# Apply CRDs first (server-side to avoid 1MB secret size limit)
+kubectl apply -f /home/jhull/devel/rhaii-xks-kserve/crds/ --server-side --force-conflicts
+
+# Verify CRDs installed
+kubectl get crd | grep -E "serving.kserve.io|inference.networking"
+
+# Install Helm chart
+helm install rhaii-xks-kserve /home/jhull/devel/rhaii-xks-kserve \
+  --namespace opendatahub \
+  --wait \
+  --timeout 10m
 ```
 
 **What this does**:
-- Creates `opendatahub` namespace
+- Installs KServe CRDs (LLMInferenceService, InferencePool, etc.)
 - Deploys KServe controller manager
-- Installs LLMInferenceService CRD
-- Configures LLMInferenceServiceConfig templates
+- Configures RBAC and webhooks
+- Sets up LLMInferenceServiceConfig templates
 
-**Wait Time**: ~3 minutes
+**Wait Time**: ~3-5 minutes
 
-### 3.2 Verify KServe Deployment
+### 3.3 Verify KServe Deployment
 
 ```bash
 # Check KServe controller pod
@@ -284,8 +307,7 @@ kubectl get llminferenceserviceconfig -n opendatahub
 **Expected Templates**:
 ```
 NAME                          AGE
-rhaiis-tpu-default           2m
-rhaiis-cuda-default          2m
+kserve-config-llm-router-route   2m
 ```
 
 ---

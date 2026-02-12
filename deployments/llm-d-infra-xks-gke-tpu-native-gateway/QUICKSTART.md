@@ -67,13 +67,29 @@ kubectl apply --server-side -f \
   https://github.com/kubernetes-sigs/lws/releases/download/v0.4.0/manifests.yaml
 ```
 
-### Step 3: Deploy KServe (10 min)
+### Step 3: Deploy KServe via Helm Chart (10 min)
 
 ```bash
-cd /home/jhull/devel/llm-d-infra-xks
+# Clone Helm chart (if not already cloned)
+cd /home/jhull/devel
+git clone https://github.com/pierdipi/rhaii-xks-kserve.git
 
-# Deploy KServe controller
-make deploy-kserve
+# Create namespace
+kubectl create namespace opendatahub --dry-run=client -o yaml | kubectl apply -f -
+
+# Copy Red Hat pull secret
+kubectl get secret redhat-pull-secret -n cert-manager -o yaml | \
+  sed 's/namespace: cert-manager/namespace: opendatahub/' | \
+  kubectl apply -f -
+
+# Apply CRDs
+kubectl apply -f /home/jhull/devel/rhaii-xks-kserve/crds/ --server-side --force-conflicts
+
+# Install Helm chart
+helm install rhaii-xks-kserve /home/jhull/devel/rhaii-xks-kserve \
+  --namespace opendatahub \
+  --wait \
+  --timeout 10m
 
 # Verify
 kubectl get pods -n opendatahub

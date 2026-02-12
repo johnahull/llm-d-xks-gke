@@ -1,0 +1,132 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"serving.kserve.io/v1alpha1","kind":"LLMInferenceService","metadata":{"annotations":{},"name":"qwen2-3b-pattern3","namespace":"llm-d-inference-scheduling"},"spec":{"model":{"name":"Qwen/Qwen2.5-3B-Instruct","uri":"hf://Qwen/Qwen2.5-3B-Instruct"},"replicas":3,"router":{"gateway":{"refs":[{"name":"inference-gateway","namespace":"opendatahub"}]},"route":{},"scheduler":{}},"template":{"containers":[{"args":["python3 -m vllm.entrypoints.openai.api_server \\\n  --model=/mnt/models \\\n  --dtype=half \\\n  --max-model-len=2048 \\\n  --tensor-parallel-size=4 \\\n  --enable-prefix-caching \\\n  --disable-log-requests\n"],"env":[{"name":"TPU_CHIPS_PER_HOST_BOUNDS","value":"2,2,1"},{"name":"TPU_HOST_BOUNDS","value":"1,1,1"},{"name":"PJRT_DEVICE","value":"TPU"},{"name":"HF_TOKEN","valueFrom":{"secretKeyRef":{"key":"HF_TOKEN","name":"hf-token"}}}],"image":"registry.redhat.io/rhaiis/vllm-tpu-rhel9:3.2.5","livenessProbe":{"failureThreshold":5,"httpGet":{"path":"/health","port":8000,"scheme":"HTTP"},"initialDelaySeconds":240,"periodSeconds":30,"timeoutSeconds":30},"name":"main","readinessProbe":{"httpGet":{"path":"/v1/models","port":8000,"scheme":"HTTP"},"initialDelaySeconds":240,"periodSeconds":10,"timeoutSeconds":10},"resources":{"limits":{"google.com/tpu":"4"},"requests":{"google.com/tpu":"4"}}}],"imagePullSecrets":[{"name":"redhat-pull-secret"}],"nodeSelector":{"cloud.google.com/gke-tpu-accelerator":"tpu-v6e-slice","cloud.google.com/gke-tpu-topology":"2x2"},"tolerations":[{"effect":"NoSchedule","key":"google.com/tpu","operator":"Equal","value":"present"}]}}}
+  creationTimestamp: "2026-02-12T15:35:23Z"
+  finalizers:
+  - serving.kserve.io/llmisvc-finalizer
+  generation: 2
+  name: qwen2-3b-pattern3
+  namespace: llm-d-inference-scheduling
+  resourceVersion: "1770914362332095005"
+  uid: 23c4ec17-8ac7-4c11-a893-bab807bdcdec
+spec:
+  model:
+    name: Qwen/Qwen2.5-3B-Instruct
+    uri: hf://Qwen/Qwen2.5-3B-Instruct
+  replicas: 0
+  router:
+    gateway:
+      refs:
+      - name: inference-gateway
+        namespace: opendatahub
+    route: {}
+    scheduler: {}
+  template:
+    containers:
+    - args:
+      - |
+        python3 -m vllm.entrypoints.openai.api_server \
+          --model=/mnt/models \
+          --dtype=half \
+          --max-model-len=2048 \
+          --tensor-parallel-size=4 \
+          --enable-prefix-caching \
+          --disable-log-requests
+      env:
+      - name: TPU_CHIPS_PER_HOST_BOUNDS
+        value: 2,2,1
+      - name: TPU_HOST_BOUNDS
+        value: 1,1,1
+      - name: PJRT_DEVICE
+        value: TPU
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            key: HF_TOKEN
+            name: hf-token
+      image: registry.redhat.io/rhaiis/vllm-tpu-rhel9:3.2.5
+      livenessProbe:
+        failureThreshold: 5
+        httpGet:
+          path: /health
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 240
+        periodSeconds: 30
+        timeoutSeconds: 30
+      name: main
+      readinessProbe:
+        httpGet:
+          path: /v1/models
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 240
+        periodSeconds: 10
+        timeoutSeconds: 10
+      resources:
+        limits:
+          google.com/tpu: "4"
+        requests:
+          google.com/tpu: "4"
+    imagePullSecrets:
+    - name: redhat-pull-secret
+    nodeSelector:
+      cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+      cloud.google.com/gke-tpu-topology: 2x2
+    tolerations:
+    - effect: NoSchedule
+      key: google.com/tpu
+      operator: Equal
+      value: present
+status:
+  addresses:
+  - name: gateway-external
+    url: http://35.214.195.39/llm-d-inference-scheduling/qwen2-3b-pattern3
+  annotations:
+    serving.kserve.io/config-llm-decode-template: kserve-config-llm-decode-template
+    serving.kserve.io/config-llm-decode-worker-data-parallel: kserve-config-llm-decode-worker-data-parallel
+    serving.kserve.io/config-llm-prefill-template: kserve-config-llm-prefill-template
+    serving.kserve.io/config-llm-prefill-worker-data-parallel: kserve-config-llm-prefill-worker-data-parallel
+    serving.kserve.io/config-llm-router-route: kserve-config-llm-router-route
+    serving.kserve.io/config-llm-scheduler: kserve-config-llm-scheduler
+    serving.kserve.io/config-llm-template: kserve-config-llm-template
+    serving.kserve.io/config-llm-worker-data-parallel: kserve-config-llm-worker-data-parallel
+  conditions:
+  - lastTransitionTime: "2026-02-12T16:39:22Z"
+    severity: Info
+    status: "True"
+    type: GatewaysReady
+  - lastTransitionTime: "2026-02-12T15:35:59Z"
+    severity: Info
+    status: "True"
+    type: HTTPRoutesReady
+  - lastTransitionTime: "2026-02-12T15:35:59Z"
+    severity: Info
+    status: "True"
+    type: InferencePoolReady
+  - lastTransitionTime: "2026-02-12T15:40:30Z"
+    severity: Info
+    status: "True"
+    type: MainWorkloadReady
+  - lastTransitionTime: "2026-02-12T15:35:40Z"
+    severity: Info
+    status: "True"
+    type: PresetsCombined
+  - lastTransitionTime: "2026-02-12T16:39:22Z"
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2026-02-12T16:39:22Z"
+    status: "True"
+    type: RouterReady
+  - lastTransitionTime: "2026-02-12T15:36:03Z"
+    severity: Info
+    status: "True"
+    type: SchedulerWorkloadReady
+  - lastTransitionTime: "2026-02-12T15:40:30Z"
+    status: "True"
+    type: WorkloadsReady
+  observedGeneration: 2
+  url: http://35.214.195.39/llm-d-inference-scheduling/qwen2-3b-pattern3

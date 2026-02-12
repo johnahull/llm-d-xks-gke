@@ -7,7 +7,7 @@ Infrastructure deployment for KServe LLMInferenceService on GKE with TPU v6e acc
 | Repository | Purpose |
 |------------|---------|
 | [llm-d-infra-xks](https://github.com/aneeshkp/llm-d-infra-xks) | Infrastructure Helm charts (cert-manager operator) |
-| [opendatahub-io/kserve](https://github.com/opendatahub-io/kserve) | KServe controller with LLMInferenceService CRD |
+| [rhaii-xks-kserve](https://github.com/pierdipi/rhaii-xks-kserve) | KServe Helm chart with LLMInferenceService CRD |
 
 ## Overview
 
@@ -15,7 +15,7 @@ Infrastructure deployment for KServe LLMInferenceService on GKE with TPU v6e acc
 |-----------|-------------|-------------|
 | cert-manager-operator | 1.15.2 | TLS certificate management |
 | GKE Gateway Controller | Built-in | Native GKE Gateway API implementation |
-| KServe | v0.15 | LLMInferenceService controller with automatic resource management |
+| KServe | 3.4.0-ea.1 | LLMInferenceService controller with automatic resource management |
 
 ## Deployment Patterns
 
@@ -77,7 +77,7 @@ kubectl apply -f manifests/llmisvc-tpu-pattern3.yaml
 | GKE | 1.34+ | Kubernetes cluster with TPU support and Gateway API |
 | Gateway API | v1 | Native GKE implementation (no Istio required) |
 | InferencePool API | v1 | `inference.networking.k8s.io/v1` |
-| KServe | release-v0.15 | LLMInferenceService controller with automatic HTTPRoute/InferencePool creation |
+| KServe | 3.4.0-ea.1 | LLMInferenceService controller with automatic HTTPRoute/InferencePool creation (deployed via Helm chart) |
 | TPU | v6e | 4-chip configuration (2×2 topology) |
 
 ### Key Differences from Istio Variant
@@ -108,11 +108,12 @@ kubectl apply -f manifests/llmisvc-tpu-pattern3.yaml
 ## Prerequisites
 
 - GKE cluster with TPU v6e support (see [GKE Cluster Creation](#step-1-create-gke-cluster-15-20-min) below)
-- `kubectl` (1.28+), `helm` (v3.17+), `kustomize` (v5.7+)
+- `kubectl` (1.28+), `helm` (v3.17+)
 - `gcloud` CLI installed and configured
 - Red Hat account (for KServe and vLLM images from `registry.redhat.io`)
 - HuggingFace token for model access
 - Google Cloud project with TPU quota (minimum 4 chips)
+- Local clone of rhaii-xks-kserve Helm chart at `/home/jhull/devel/rhaii-xks-kserve`
 
 ### Red Hat Pull Secret Setup
 
@@ -335,51 +336,53 @@ kubectl get pods -n cert-manager       # 3 pods Running
 kubectl get pods -n cert-manager-operator  # 1 pod Running
 ```
 
-### Step 3: Deploy KServe (3-5 min)
+### Step 3: Deploy KServe via Helm Chart (3-5 min)
 
+⚠️ **Important**: This deployment uses the rhaii-xks-kserve Helm chart instead of kustomize.
+
+**Prerequisites:**
 ```bash
-cd /home/jhull/devel/llm-d-infra-xks
-
-make deploy-kserve
-
-# Verify
-kubectl get pods -n opendatahub
-kubectl get llminferenceserviceconfig -n opendatahub
+# Clone the Helm chart repository (if not already cloned)
+cd /home/jhull/devel
+git clone https://github.com/pierdipi/rhaii-xks-kserve.git
 ```
 
-<details>
-<summary>Manual steps (click to expand)</summary>
-
+**Deploy KServe:**
 ```bash
 # Create opendatahub namespace
 kubectl create namespace opendatahub --dry-run=client -o yaml | kubectl apply -f -
 
-# Copy pull secret
+# Copy Red Hat pull secret to opendatahub namespace
 kubectl get secret redhat-pull-secret -n cert-manager -o yaml | \
   sed 's/namespace: cert-manager/namespace: opendatahub/' | \
   kubectl apply -f -
 
-# Apply cert-manager PKI resources first
-kubectl apply -k "https://github.com/opendatahub-io/kserve/config/overlays/odh-test/cert-manager?ref=release-v0.15"
-kubectl wait --for=condition=Ready clusterissuer/opendatahub-ca-issuer --timeout=120s
+# Apply CRDs first (server-side to avoid 1MB secret size limit)
+kubectl apply -f /home/jhull/devel/rhaii-xks-kserve/crds/ --server-side --force-conflicts
 
-# First apply - creates CRDs and deployment
-kustomize build "https://github.com/opendatahub-io/kserve/config/overlays/odh-xks?ref=release-v0.15" | kubectl apply --server-side --force-conflicts -f - || true
+# Verify CRDs installed
+kubectl get crd | grep -E "serving.kserve.io|inference.networking"
 
-# Delete webhooks to allow controller startup
-kubectl delete validatingwebhookconfiguration llminferenceservice.serving.kserve.io llminferenceserviceconfig.serving.kserve.io --ignore-not-found
+# Install Helm chart
+helm install rhaii-xks-kserve /home/jhull/devel/rhaii-xks-kserve \
+  --namespace opendatahub \
+  --wait \
+  --timeout 10m
 
-# Wait for controller to be ready
-kubectl wait --for=condition=Available deployment/kserve-controller-manager -n opendatahub --timeout=300s
-
-# Second apply - now webhooks work
-kustomize build "https://github.com/opendatahub-io/kserve/config/overlays/odh-xks?ref=release-v0.15" | kubectl apply --server-side --force-conflicts -f -
-
-# Verify LLMInferenceServiceConfig templates exist
+# Verify deployment
+kubectl get pods -n opendatahub
 kubectl get llminferenceserviceconfig -n opendatahub
 ```
 
-</details>
+**Expected Output:**
+```bash
+# Pods
+kserve-controller-manager-...   1/1     Running   0          2m
+
+# LLMInferenceServiceConfig templates
+NAME                          AGE
+kserve-config-llm-router-route   2m
+```
 
 **Post-Installation: Fix KServe Template for GKE Gateway**
 
@@ -671,16 +674,24 @@ cat ../benchmarks/results/benchmark_*.json | jq .
 ## Usage
 
 ```bash
-# Deploy (from llm-d-infra-xks directory)
+# Deploy cert-manager (from llm-d-infra-xks directory)
+cd /home/jhull/devel/llm-d-infra-xks
 make deploy-cert-manager  # Only cert-manager needed (no Istio)
-make deploy-kserve        # Deploy KServe
+
+# Deploy KServe via Helm chart
+cd /home/jhull/devel/rhaii-xks-kserve
+kubectl create namespace opendatahub --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f crds/ --server-side --force-conflicts
+helm install rhaii-xks-kserve . --namespace opendatahub --wait
 
 # Undeploy
-make undeploy-kserve     # Remove KServe
-make undeploy            # Remove all infrastructure
+helm uninstall rhaii-xks-kserve -n opendatahub  # Remove KServe
+cd /home/jhull/devel/llm-d-infra-xks
+make undeploy                                    # Remove cert-manager
 
-# Other
-make status              # Show status
+# Status
+kubectl get pods -n opendatahub    # KServe status
+kubectl get pods -n cert-manager   # cert-manager status
 ```
 
 ## Configuration
@@ -923,8 +934,9 @@ See the [Istio variant troubleshooting guide](../llm-d-infra-xks-gke-tpu/README.
 
 ---
 
-**Last Updated**: 2026-02-11
-**Status**: ✅ **Production-Ready** - GKE native Gateway API (no Istio) with documented solutions for all known issues
+**Last Updated**: 2026-02-12
+**Status**: ✅ **Production-Ready** - GKE native Gateway API (no Istio) with Helm-based KServe deployment
+**KServe Version**: 3.4.0-ea.1 (deployed via rhaii-xks-kserve Helm chart)
 **Pattern**: Pattern 1 - Single model baseline with EPP routing on GKE TPU v6e
 
 ---
