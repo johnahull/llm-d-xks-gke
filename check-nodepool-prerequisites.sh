@@ -169,9 +169,42 @@ if echo "$MACHINE_CHECK" | grep -q "name: $MACHINE_TYPE"; then
     CPUS=$(echo "$MACHINE_CHECK" | grep "guestCpus:" | awk '{print $2}')
     MEMORY=$(echo "$MACHINE_CHECK" | grep "memoryMb:" | awk '{print $2}')
     MEMORY_GB=$((MEMORY / 1024))
+    DESCRIPTION=$(echo "$MACHINE_CHECK" | grep "^description:" | sed 's/description: *//')
 
     echo "   CPUs: $CPUS"
     echo "   Memory: ${MEMORY_GB} GB"
+
+    # Show description if available (contains GPU/TPU info)
+    if [[ -n "$DESCRIPTION" ]]; then
+        echo "   Description: $DESCRIPTION"
+    fi
+
+    # Validate machine type compatibility with accelerator
+    if [ "$IS_TPU" = true ]; then
+        # Validate TPU machine type naming
+        if [[ ! "$MACHINE_TYPE" =~ ^ct[0-9] ]]; then
+            echo -e "${YELLOW}⚠️  Warning: Machine type doesn't match TPU naming pattern (ct*)${NC}"
+            echo "   TPU machine types should start with ct6e, ct5e, or ct5p"
+        fi
+
+        # Extract chip count from machine type name (e.g., ct6e-standard-4t -> 4)
+        if [[ "$MACHINE_TYPE" =~ -([0-9]+)t?(-tpu)?$ ]]; then
+            DETECTED_CHIPS="${BASH_REMATCH[1]}"
+            echo "   Detected TPU chips: $DETECTED_CHIPS (from machine type name)"
+        fi
+
+    elif [ "$IS_GPU" = true ] && [[ -n "$ACCELERATOR" ]]; then
+        # Check if machine type description mentions the accelerator
+        if [[ -n "$DESCRIPTION" ]] && echo "$DESCRIPTION" | grep -qi "$(echo $ACCELERATOR | sed 's/nvidia-//;s/-/ /g')"; then
+            echo -e "${GREEN}✅ Machine type description confirms GPU compatibility${NC}"
+        elif [[ "$MACHINE_TYPE" =~ ^(a2-|g2-|a3-) ]]; then
+            # GPU-optimized machine types (GPUs are integrated)
+            echo "   Note: GPU-optimized machine type (integrated GPUs)"
+        else
+            # Standard machine type + separate accelerator
+            echo "   Note: Standard machine type (GPU attached separately via --accelerator)"
+        fi
+    fi
 else
     echo -e "${RED}❌ Machine type $MACHINE_TYPE is NOT available in $ZONE${NC}"
     echo "   Error: $MACHINE_CHECK"
@@ -233,9 +266,9 @@ if [ "$IS_TPU" = true ] && [[ -n "$TPU_TOPOLOGY" ]]; then
     echo "Check 4: TPU Topology Validation"
     echo "========================================="
 
-    # Extract chip count from machine type
-    CHIP_COUNT=""
-    if [[ "$MACHINE_TYPE" =~ -([0-9]+)t?$ ]]; then
+    # Use chip count detected in Check 2 (or extract if not already set)
+    CHIP_COUNT="${DETECTED_CHIPS:-}"
+    if [[ -z "$CHIP_COUNT" ]] && [[ "$MACHINE_TYPE" =~ -([0-9]+)t?$ ]]; then
         CHIP_COUNT="${BASH_REMATCH[1]}"
     fi
 

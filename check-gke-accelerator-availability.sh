@@ -6,6 +6,7 @@ set -e
 
 PROJECT=${PROJECT:-ecoeng-llmd}
 USE_API=false
+SHOW_MACHINE_TYPES=false
 
 # ============================================================================
 # API Data Fetching Functions
@@ -129,6 +130,70 @@ load_api_data() {
     echo "API data fetch complete" >&2
     echo "=========================================" >&2
     echo "" >&2
+}
+
+fetch_and_display_machine_types() {
+    echo "========================================="
+    echo "Available Machine Types from API"
+    echo "========================================="
+    echo "Fetching machine types (this may take 10-15 seconds)..."
+    echo ""
+
+    # Determine which zones to query based on filters
+    local zones_to_query=()
+
+    if [[ -n "$REGION_FILTER" ]]; then
+        # Query specific region zones
+        if [[ "$REGION_FILTER" == *"*"* ]]; then
+            # Wildcard pattern - query a few common zones
+            zones_to_query=("us-central1-a" "us-east1-c" "us-west1-a" "europe-west4-a")
+        else
+            # Specific region - query one zone from that region
+            zones_to_query=("${REGION_FILTER}-a")
+        fi
+    else
+        # Default: query representative zones
+        zones_to_query=("us-central1-a" "us-east4-a")
+    fi
+
+    # Fetch TPU machine types
+    if [[ "$TYPE_FILTER" == "all" || "$TYPE_FILTER" == "tpu" ]]; then
+        echo "TPU Machine Types:"
+        echo "----------------------------------------"
+
+        for zone in "${zones_to_query[@]}"; do
+            echo "Zone: $zone"
+            gcloud compute machine-types list \
+                --zones="$zone" \
+                --filter="name:ct6e OR name:ct5e OR name:ct5p" \
+                --format="table[box](name,guestCpus,memoryMb.yesno(no='',yes=size()),description)" \
+                --project="$PROJECT" 2>/dev/null | head -20
+            echo ""
+            break  # Only show one zone for TPUs
+        done
+    fi
+
+    # Fetch GPU machine types
+    if [[ "$TYPE_FILTER" == "all" || "$TYPE_FILTER" == "gpu" ]]; then
+        echo "GPU-Optimized Machine Types:"
+        echo "----------------------------------------"
+
+        for zone in "${zones_to_query[@]}"; do
+            echo "Zone: $zone"
+            gcloud compute machine-types list \
+                --zones="$zone" \
+                --filter="name:a2- OR name:g2- OR name:a3-" \
+                --format="table[box](name,guestCpus,memoryMb.yesno(no='',yes=size()),description)" \
+                --project="$PROJECT" 2>/dev/null | head -25
+            echo ""
+            break  # Only show one zone for GPUs
+        done
+
+        echo "Note: For GPUs attached to standard machine types (n1, n2, e2),"
+        echo "use --accelerator flag with the base machine type."
+        echo "Example: --machine-type=n1-standard-4 --accelerator=nvidia-tesla-t4"
+        echo ""
+    fi
 }
 
 # ============================================================================
@@ -257,6 +322,7 @@ Options:
   --region <pattern>      Filter by region pattern (e.g., "us-central1", "us-*")
   --zone <zone>           Validate specific zone
   --api                   Fetch live data from Google Cloud API (slower, always current)
+  --show-machine-types    Display available machine types from API (helps find new types)
   --help, -h              Show this help message
 
 Data Sources:
@@ -276,6 +342,8 @@ Examples:
   $0 --region "us-*"                    # Show all US zones
   $0 us-central1-a                      # Validate us-central1-a
   $0 --type gpu --zone us-central1-a    # Validate us-central1-a for GPUs
+  $0 --show-machine-types --type tpu    # Show available TPU machine types
+  $0 --show-machine-types --type gpu    # Show available GPU machine types
 
 Supported Accelerator Types:
   TPU: v6e (Trillium), v5e, v5p
@@ -464,6 +532,10 @@ while [[ $# -gt 0 ]]; do
             USE_API=true
             shift
             ;;
+        --show-machine-types)
+            SHOW_MACHINE_TYPES=true
+            shift
+            ;;
         --help|-h)
             show_usage
             exit 0
@@ -495,6 +567,12 @@ fi
 # ============================================================================
 # Main Script
 # ============================================================================
+
+# If machine types display requested, show and exit
+if [[ "$SHOW_MACHINE_TYPES" == "true" ]]; then
+    fetch_and_display_machine_types
+    exit 0
+fi
 
 # If zone validation requested, run that and exit
 if [[ -n "$ZONE_VALIDATE" ]]; then
