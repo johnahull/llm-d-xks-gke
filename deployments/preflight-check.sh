@@ -260,12 +260,38 @@ fi
 
 # Use our existing accelerator checker
 if [[ -f "$SCRIPT_DIR/check-gke-accelerator-availability.sh" ]]; then
-    echo "Running accelerator availability check..."
-    if "$SCRIPT_DIR/check-gke-accelerator-availability.sh" --zone "$ZONE" 2>&1 | grep -q "✅ GKE is available"; then
-        echo -e "${GREEN}✅ GKE and accelerators available in $ZONE${NC}"
+    echo "Running accelerator availability check for $ACCELERATOR_TYPE in $ZONE..."
+
+    # Call checker with specific accelerator type
+    CHECKER_OUTPUT=$("$SCRIPT_DIR/check-gke-accelerator-availability.sh" --zone "$ZONE" --type "$ACCELERATOR_TYPE" 2>&1)
+
+    # Check for GKE availability
+    if echo "$CHECKER_OUTPUT" | grep -q "✅ GKE is available"; then
+        echo -e "${GREEN}✅ GKE is available in $ZONE${NC}"
     else
-        echo -e "${RED}❌ GKE or accelerators not available in $ZONE${NC}"
+        echo -e "${RED}❌ GKE is not available in $ZONE${NC}"
         ALL_CHECKS_PASSED=false
+    fi
+
+    # Check for specific accelerator availability
+    if [[ "$ACCELERATOR_TYPE" == "tpu" ]]; then
+        if echo "$CHECKER_OUTPUT" | grep -q "✅ TPU .* is SUPPORTED"; then
+            echo -e "${GREEN}✅ TPU accelerators available in $ZONE${NC}"
+            # Show which TPU types are supported
+            echo "$CHECKER_OUTPUT" | grep "✅ TPU" | sed 's/^/   /'
+        else
+            echo -e "${RED}❌ No TPU accelerators available in $ZONE${NC}"
+            ALL_CHECKS_PASSED=false
+        fi
+    elif [[ "$ACCELERATOR_TYPE" == "gpu" ]]; then
+        if echo "$CHECKER_OUTPUT" | grep -q "GPU is SUPPORTED"; then
+            echo -e "${GREEN}✅ GPU accelerators available in $ZONE${NC}"
+            # Show which GPU types are supported
+            echo "$CHECKER_OUTPUT" | grep "✅ NVIDIA" | sed 's/^/   /'
+        else
+            echo -e "${RED}❌ No GPU accelerators available in $ZONE${NC}"
+            ALL_CHECKS_PASSED=false
+        fi
     fi
 else
     echo -e "${YELLOW}⚠️  Accelerator checker script not found${NC}"
