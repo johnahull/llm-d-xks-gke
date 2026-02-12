@@ -181,9 +181,8 @@ kubectl apply -f manifests/llmisvc-tpu-pattern3.yaml
 │  │                HTTPRoute → InferencePool                          │ │
 │  │                    EPP Scheduler (Prefix-Cache-Aware)             │ │
 │  │  Scoring:                                                         │ │
-│  │    - prefix-cache-scorer: weight 3.0 (highest priority)          │ │
-│  │    - queue-scorer: weight 1.0                                    │ │
-│  │    - kv-cache-utilization-scorer: weight 1.0                     │ │
+│  │    - prefix-cache-scorer: weight 2.0 (highest priority)          │ │
+│  │    - load-aware-scorer: weight 1.0 (queue + KV cache)            │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                 ↓                                       │
 │         Routes to replica with best score (prefix match + low queue)   │
@@ -217,23 +216,20 @@ kubectl apply -f manifests/llmisvc-tpu-pattern3.yaml
 
    Replica 1:
      - prefix_cache_score: 0.9 (has "You are a helpful assistant." cached)
-     - queue_score: 0.7 (2 requests in queue)
-     - kv_cache_score: 0.8 (40% memory used)
-     → Weighted total: (0.9 × 3.0) + (0.7 × 1.0) + (0.8 × 1.0) = 4.2
+     - load_aware_score: 0.7 (2 requests queued, 40% KV cache used)
+     → Weighted total: (0.9 × 2.0) + (0.7 × 1.0) = 2.5
 
    Replica 2:
      - prefix_cache_score: 0.1 (different prefix cached)
-     - queue_score: 0.9 (0 requests in queue)
-     - kv_cache_score: 0.9 (20% memory used)
-     → Weighted total: (0.1 × 3.0) + (0.9 × 1.0) + (0.9 × 1.0) = 2.1
+     - load_aware_score: 0.9 (0 requests queued, 20% KV cache used)
+     → Weighted total: (0.1 × 2.0) + (0.9 × 1.0) = 1.1
 
    Replica 3:
      - prefix_cache_score: 0.0 (no prefix match)
-     - queue_score: 0.8 (1 request in queue)
-     - kv_cache_score: 0.7 (50% memory used)
-     → Weighted total: (0.0 × 3.0) + (0.8 × 1.0) + (0.7 × 1.0) = 1.5
+     - load_aware_score: 0.8 (1 request queued, 50% KV cache used)
+     → Weighted total: (0.0 × 2.0) + (0.8 × 1.0) = 0.8
 
-4. EPP routes to Replica 1 (highest score = 4.2)
+4. EPP routes to Replica 1 (highest score = 2.5)
 
 5. Replica 1 processes request:
    - Cache hit on prefix → faster KV cache computation
@@ -718,22 +714,23 @@ prompts = [
 
 ### EPP Scheduler Behavior
 
-The EPP (Efficient Prefix-aware Placement) scheduler makes intelligent routing decisions based on three scoring plugins:
+The EPP (Efficient Prefix-aware Placement) scheduler makes intelligent routing decisions based on two scoring plugins:
 
-**1. Prefix Cache Scorer (weight: 3.0)** - Highest priority
+**1. Prefix Cache Scorer (weight: 2.0)** - Highest priority
 - Tracks which replicas have cached which prompt prefixes
-- Scores higher for replicas with matching prefix
+- Scores higher for replicas with matching prefix blocks
 - Maximizes cache hit rate
 
-**2. Queue Scorer (weight: 1.0)**
-- Monitors request queue depth per replica
-- Scores higher for replicas with fewer queued requests
-- Balances load across replicas
+**2. Load-Aware Scorer (weight: 1.0)** - Combines queue depth and KV cache utilization
+- Monitors request queue depth per replica (threshold: 5 requests)
+- Tracks KV cache memory usage per replica (threshold: 80%)
+- Scores higher for replicas with lower queue depth and more free KV cache
+- Prevents saturation and balances load
 
-**3. KV Cache Utilization Scorer (weight: 1.0)**
-- Tracks KV cache memory usage per replica
-- Scores higher for replicas with more free KV cache
-- Prevents memory exhaustion
+**Saturation Detection:**
+- Queue depth threshold: **5 requests** - replica considered saturated above this
+- KV cache threshold: **80%** - replica considered saturated above this utilization
+- Metrics staleness threshold: **200ms** - scores decay if metrics are stale
 
 **Scoring Example:**
 
@@ -746,36 +743,34 @@ EPP calculates scores for each replica:
 
 Replica 1:
   ├─ Prefix cache score: 0.9 (has "You are a helpful assistant." cached)
-  ├─ Queue score: 0.7 (2 requests in queue)
-  ├─ KV cache score: 0.8 (40% memory used, 60% free)
-  └─ Weighted total: (0.9 × 3.0) + (0.7 × 1.0) + (0.8 × 1.0) = 4.2
+  ├─ Load-aware score: 0.7 (2 requests queued, 40% KV cache used)
+  └─ Weighted total: (0.9 × 2.0) + (0.7 × 1.0) = 2.5
 
 Replica 2:
   ├─ Prefix cache score: 0.1 (different prefix cached)
-  ├─ Queue score: 0.9 (0 requests in queue - idle)
-  ├─ KV cache score: 0.9 (20% memory used, 80% free)
-  └─ Weighted total: (0.1 × 3.0) + (0.9 × 1.0) + (0.9 × 1.0) = 2.1
+  ├─ Load-aware score: 0.9 (0 requests queued, 20% KV cache used)
+  └─ Weighted total: (0.1 × 2.0) + (0.9 × 1.0) = 1.1
 
 Replica 3:
   ├─ Prefix cache score: 0.0 (no prefix match)
-  ├─ Queue score: 0.8 (1 request in queue)
-  ├─ KV cache score: 0.7 (50% memory used, 50% free)
-  └─ Weighted total: (0.0 × 3.0) + (0.8 × 1.0) + (0.7 × 1.0) = 1.5
+  ├─ Load-aware score: 0.8 (1 request queued, 50% KV cache used)
+  └─ Weighted total: (0.0 × 2.0) + (0.8 × 1.0) = 0.8
 
-Decision: Route to Replica 1 (highest score = 4.2)
+Decision: Route to Replica 1 (highest score = 2.5)
   → Cache hit on system prompt
-  → Faster inference despite higher queue depth
+  → Faster inference despite moderate queue depth
 ```
 
-**Why prefix cache weight is 3.0:**
+**Why prefix cache weight is 2.0 (2× load-aware):**
 - Cache hit can save 30-50% of inference time
-- More impactful than queue depth or memory availability
-- Justifies waiting in slightly longer queue for cache benefit
+- More impactful than queue depth or memory availability alone
+- Justifies routing to a replica with cache hit even if moderately more loaded
+- 2:1 ratio means cache hits are twice as important as load balancing
 
 ### Prefix Caching in vLLM
 
 **How it works:**
-1. vLLM processes prompts in blocks (default: 16 tokens per block)
+1. vLLM processes prompts in blocks (auto-tuned: **64 tokens per block** for TPU)
 2. Each block's KV cache is hashed and stored
 3. When new request arrives, vLLM checks for matching prefix blocks
 4. Matching blocks → reuse KV cache → skip computation
@@ -784,8 +779,14 @@ Decision: Route to Replica 1 (highest score = 4.2)
 **Configuration parameters:**
 ```yaml
 --enable-prefix-caching         # Enable the feature
---prefix-cache-block-size=16    # Tokens per cache block (must match vLLM block size)
+# Note: Block size is auto-tuned by vLLM (64 tokens for TPU)
+# --prefix-cache-block-size is NOT supported on TPU (GPU-only parameter)
 ```
+
+**EPP Prefix Cache Settings (from scheduler logs):**
+- Block size: **64 tokens** (auto-tuned)
+- Max prefix blocks to match: **256**
+- LRU capacity per server: **31,250 blocks**
 
 **Example:**
 ```

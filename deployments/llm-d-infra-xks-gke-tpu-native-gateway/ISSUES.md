@@ -385,5 +385,157 @@ File feedback with Google Cloud documentation team to clarify:
 
 ---
 
-**Last Updated:** 2026-02-11
-**Deployment Status:** ✅ SUCCESSFUL (core functionality working)
+## Pattern 3 Deployment Issues
+
+### Issue #12: vLLM TPU Doesn't Support --prefix-cache-block-size
+
+**Problem:**
+Pattern 3 manifest initially included `--prefix-cache-block-size=16` argument based on GPU vLLM documentation. This caused pod crash loops on TPU deployment:
+
+```
+api_server.py: error: unrecognized arguments: --prefix-cache-block-size=16
+```
+
+**Root Cause:**
+The `--prefix-cache-block-size` parameter is **GPU-only** and not supported in vLLM TPU 3.2.5. TPU version auto-tunes the block size.
+
+**Solution:**
+Remove the `--prefix-cache-block-size` argument from TPU manifests:
+
+```yaml
+# Pattern 3 TPU manifest
+args:
+- |
+  python3 -m vllm.entrypoints.openai.api_server \
+    --model=/mnt/models \
+    --dtype=half \
+    --max-model-len=2048 \
+    --tensor-parallel-size=4 \
+    --enable-prefix-caching \
+    # REMOVED: --prefix-cache-block-size=16 \
+    --disable-log-requests
+```
+
+**Actual TPU Configuration (from EPP logs):**
+- Block size: **64 tokens** (auto-tuned by vLLM)
+- Max prefix blocks to match: 256
+- LRU capacity per server: 31,250 blocks
+
+**Impact:** CRITICAL - Pod crash loop until fixed
+
+**Fix Applied:** 2026-02-12, commit c6cab9f
+
+---
+
+### Issue #13: GCP Health Check Path Keeps Resetting to "/"
+
+**Problem:**
+When deploying Pattern 3, GCP health checks are auto-created with `requestPath: /` instead of `/health`. Manually updating the health check works temporarily, but GKE often resets it back to `/`.
+
+**Symptoms:**
+```bash
+# Check backend health
+gcloud compute backend-services get-health <backend-name> --region=europe-west4
+
+# Shows: healthState: UNHEALTHY for all backends
+
+# Check health check path
+gcloud compute health-checks describe <health-check-name> --region=europe-west4
+# Shows: requestPath: /  (incorrect, should be /health)
+```
+
+**Root Cause:**
+GKE Gateway controller manages health checks and may reset manual changes during reconciliation. This is a known GKE limitation when using GatewayClass-managed resources.
+
+**Solution:**
+Manually update health check and wait for GKE reconciliation:
+
+```bash
+# Update InferencePool health check
+gcloud compute health-checks update http <health-check-name> \
+  --region=europe-west4 \
+  --project=ecoeng-llmd \
+  --request-path=/health \
+  --port=8000
+
+# Wait 1-2 minutes for backends to become healthy
+gcloud compute backend-services get-health <backend-name> \
+  --region=europe-west4 \
+  --project=ecoeng-llmd
+```
+
+**Workaround:**
+If health checks keep resetting, verify pods respond correctly:
+
+```bash
+# Test pod directly
+kubectl exec -n llm-d-inference-scheduling <pod-name> -c main -- \
+  curl -s localhost:8000/health
+# Should return: (empty response with 200 status)
+
+# Test inference directly
+kubectl exec -n llm-d-inference-scheduling <pod-name> -c main -- \
+  curl -s localhost:8000/v1/completions -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"model":"/mnt/models","prompt":"Test","max_tokens":5}'
+```
+
+**Impact:** HIGH - Gateway routing non-functional until health checks fixed
+
+**Status:** ⚠️ WORKAROUND AVAILABLE - Pods are healthy, just GCP health check misconfigured
+
+**Related:** Same issue as #5, but more persistent in Pattern 3 multi-replica deployment
+
+---
+
+### Issue #14: Incorrect EPP Scheduler Weights in Documentation
+
+**Problem:**
+Initial Pattern 3 documentation stated EPP scheduler uses 3 separate scorers with these weights:
+- prefix-cache-scorer: 3.0
+- queue-scorer: 1.0
+- kv-cache-utilization-scorer: 1.0
+
+**Actual Configuration (from EPP logs):**
+Only **2 scorers** are used:
+- `prefix-cache-scorer`: weight **2.0**
+- `load-aware-scorer`: weight **1.0** (combines queue depth + KV cache)
+
+**Saturation Thresholds:**
+- Queue depth: **5 requests**
+- KV cache utilization: **80%**
+- Metrics staleness: **200ms**
+
+**Root Cause:**
+Documentation was based on older EPP architecture descriptions. Actual deployed KServe v0.15 uses consolidated load-aware scorer.
+
+**Solution:**
+Updated PATTERN3.md with correct scorer configuration and architecture diagrams.
+
+**Impact:** LOW - Documentation inaccuracy, doesn't affect functionality
+
+**Fix Applied:** 2026-02-12, PATTERN3.md updated
+
+---
+
+## Pattern 3 Summary
+
+**Deployment Date:** 2026-02-12
+**Replicas:** 3× TPU v6e-4 (12 chips total)
+**Status:** ✅ DEPLOYED (pods healthy, Gateway routing blocked by health check issue)
+
+**Critical Fixes Applied:**
+1. ✅ Removed `--prefix-cache-block-size` from TPU manifest
+2. ✅ Updated documentation with correct EPP weights
+3. ⚠️ Health check path fix (manual, may reset)
+
+**Outstanding Issues:**
+1. ⚠️ GCP health checks resetting to `/` (workaround: direct pod access)
+2. ⚠️ Gateway routing "no healthy upstream" (same as Issue #5/#13)
+
+---
+
+**Last Updated:** 2026-02-12
+**Deployment Status:**
+- **Pattern 1:** ✅ SUCCESSFUL (core functionality working)
+- **Pattern 3:** ✅ DEPLOYED (pods healthy, Gateway health check issue)
