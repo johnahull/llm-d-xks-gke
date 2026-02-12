@@ -119,9 +119,9 @@ if [[ -z "$DEPLOYMENT_PATH" ]]; then
     exit 1
 fi
 
-# Determine script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEPLOYMENT_DIR="${SCRIPT_DIR}/deployments/${DEPLOYMENT_PATH}"
+# Determine script directory (deployments/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOYMENT_DIR="${SCRIPT_DIR}/${DEPLOYMENT_PATH}"
 
 # Validate deployment directory exists
 if [[ ! -d "$DEPLOYMENT_DIR" ]]; then
@@ -394,8 +394,9 @@ echo "========================================="
 echo "Check 7: Required Secrets"
 echo "========================================="
 
-# Check for pull secret
-PULL_SECRET_PATH="$SCRIPT_DIR/11009103-jhull-svc-pull-secret.yaml"
+# Check for pull secret (in repo root)
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PULL_SECRET_PATH="$REPO_ROOT/11009103-jhull-svc-pull-secret.yaml"
 if [[ -f "$PULL_SECRET_PATH" ]]; then
     echo -e "${GREEN}✅ Red Hat pull secret found${NC}"
 else
@@ -407,7 +408,7 @@ fi
 # Check HuggingFace token
 if [[ -n "$HUGGINGFACE_TOKEN" ]]; then
     echo -e "${GREEN}✅ HuggingFace token set in environment${NC}"
-elif [[ -f "$SCRIPT_DIR/huggingface-token-secret.yaml" ]]; then
+elif [[ -f "$REPO_ROOT/huggingface-token-secret.yaml" ]]; then
     echo -e "${GREEN}✅ HuggingFace token secret file found${NC}"
 else
     echo -e "${YELLOW}⚠️  HuggingFace token not found${NC}"
