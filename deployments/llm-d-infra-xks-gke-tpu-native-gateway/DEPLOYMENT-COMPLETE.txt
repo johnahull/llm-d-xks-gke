@@ -96,10 +96,35 @@ Total: 9 issues encountered and documented in ISSUES.md
 
 ## Performance
 
+### Functional Testing (Initial)
 - **Average Latency:** 376ms (3 requests)
 - **Model Load Time:** ~35 seconds
 - **XLA Compilation:** ~2-3 minutes (one-time)
 - **Total Deployment:** ~2 hours (including troubleshooting)
+
+### Benchmark Results (Comprehensive)
+**Date:** 2026-02-11 21:32 CST
+**Test Tool:** Python benchmark (175 total requests)
+**Success Rate:** 100% (0 failures)
+
+| Scenario | Requests | Concurrency | Throughput | Mean Latency | P95 Latency |
+|----------|----------|-------------|------------|--------------|-------------|
+| Baseline | 5 | 1 | 2.09 req/sec | 477ms | 552ms |
+| Light load | 20 | 5 | 8.90 req/sec | 508ms | 785ms |
+| Medium load | 50 | 10 | 18.10 req/sec | 498ms | 677ms |
+| Heavy load | 100 | 20 | **33.70 req/sec** | 554ms | 715ms |
+
+**Key Findings:**
+- **Excellent scalability:** Throughput scales linearly with concurrency (2.09 → 33.70 req/sec)
+- **Stable latency:** Mean latency stays ~500ms even under heavy load (20 concurrent)
+- **High reliability:** 100% success rate across all 175 requests
+- **Low variance:** P95 latency only 29% higher than mean (715ms vs 554ms at heavy load)
+
+**Hardware Performance:**
+- TPU v6e-4 (4 chips, 2x2 topology)
+- Model: Qwen/Qwen2.5-3B-Instruct (2B parameters)
+- Inference: ~30ms per token generation
+- Sustained throughput: 33+ req/sec with 20 concurrent requests
 
 ## Cost Management
 
@@ -149,11 +174,12 @@ Internet → GKE Gateway (35.214.195.39)
 - [x] Deploy LLMInferenceService ✅
 - [x] Run test suite ✅
 - [x] Document issues ✅
-- [ ] Run performance benchmarks
-- [ ] Test EPP cache routing
-- [ ] Monitor TPU utilization
-- [ ] Configure HTTPS/TLS
-- [ ] Set up observability
+- [x] Run performance benchmarks ✅
+- [ ] Monitor TPU utilization metrics
+- [ ] Configure HTTPS/TLS at Gateway frontend
+- [ ] Set up observability (Prometheus/Grafana)
+- [ ] Test multi-replica deployment
+- [ ] Compare performance with Istio variant
 
 ## References
 

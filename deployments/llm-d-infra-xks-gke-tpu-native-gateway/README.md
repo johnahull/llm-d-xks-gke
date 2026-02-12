@@ -566,10 +566,52 @@ curl -X POST http://$GATEWAY_IP/llm-d-inference-scheduling/qwen2-3b-pattern1/v1/
 ./scripts/test-cluster.sh
 ```
 
-**Run benchmarks:**
+See results in `/tmp/test-results-*.txt`
+
+---
+
+### Step 7: Run Performance Benchmarks (15 min)
+
+Comprehensive performance benchmarking to measure throughput, latency, and scalability.
+
+**Run Python benchmark** (recommended - supports HTTP/1.1):
 ```bash
-./scripts/benchmark-cluster.sh
+cd /home/jhull/devel/llm-d-xks-gke/deployments/llm-d-infra-xks-gke-tpu-native-gateway/scripts
+
+# Get Gateway IP
+export GATEWAY_IP=$(kubectl get gateway inference-gateway -n opendatahub \
+  -o jsonpath='{.status.addresses[0].value}')
+
+# Run comprehensive benchmark
+python3 benchmark-vllm.py \
+  --url "http://${GATEWAY_IP}/llm-d-inference-scheduling/qwen2-3b-pattern1"
 ```
+
+**What it tests:**
+- **Baseline performance:** 5 requests, concurrency 1
+- **Light load:** 20 requests, concurrency 5
+- **Medium load:** 50 requests, concurrency 10
+- **Heavy load:** 100 requests, concurrency 20
+- **EPP prefix caching:** 5 identical requests to test cache effectiveness
+
+**Expected results** (Qwen2.5-3B on TPU v6e-4):
+- Throughput: 30-35 req/sec at concurrency 20
+- Mean latency: ~500ms
+- P95 latency: ~700ms
+- Success rate: 100%
+
+**Results location:**
+```bash
+# View summary
+cat ../benchmarks/results/benchmark_summary_*.txt
+
+# View full JSON metrics
+cat ../benchmarks/results/benchmark_*.json | jq .
+```
+
+**Detailed analysis:** See [BENCHMARKS.md](BENCHMARKS.md) for comprehensive performance analysis and optimization recommendations.
+
+**Note:** Apache Bench (`benchmark-cluster.sh`) is incompatible with GKE Gateway due to HTTP/1.0 limitations. Use the Python benchmark instead.
 
 ---
 

@@ -1,0 +1,9 @@
+================================================
+  llm-d-infra-xks-gke-tpu Pattern 1 Benchmark
+================================================
+Date: Wed Feb 11 09:30:22 PM CST 2026
+Endpoint: http://35.214.195.39/llm-d-inference-scheduling/qwen2-3b-pattern1/v1/completions
+Model: Qwen/Qwen2.5-3B-Instruct
+Protocol: http
+Deployment: GKE Gateway + KServe on TPU v6e-4
+

@@ -1,0 +1,41 @@
+============================================================
+  vLLM Benchmark Summary
+============================================================
+Date: 2026-02-11 21:32:23.758857
+Endpoint: http://35.214.195.39/llm-d-inference-scheduling/qwen2-3b-pattern1
+Model: /mnt/models
+
+
+Baseline:
+  Requests: 5, Concurrency: 1
+  Throughput: 2.09 req/sec
+  Latency (mean): 477 ms
+  Latency (P95): 552 ms
+  Success rate: 5/5
+
+Light load:
+  Requests: 20, Concurrency: 5
+  Throughput: 8.90 req/sec
+  Latency (mean): 508 ms
+  Latency (P95): 785 ms
+  Success rate: 20/20
+
+Medium load:
+  Requests: 50, Concurrency: 10
+  Throughput: 18.10 req/sec
+  Latency (mean): 498 ms
+  Latency (P95): 677 ms
+  Success rate: 50/50
+
+Heavy load:
+  Requests: 100, Concurrency: 20
+  Throughput: 33.70 req/sec
+  Latency (mean): 554 ms
+  Latency (P95): 715 ms
+  Success rate: 100/100
+
+
+EPP Prefix Cache Test:
+  First request: 299 ms
+  Avg subsequent: 367 ms
+  Speedup: -23.0%

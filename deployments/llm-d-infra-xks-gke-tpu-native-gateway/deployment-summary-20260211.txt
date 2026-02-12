@@ -129,11 +129,26 @@ See [ISSUES.md](ISSUES.md) for comprehensive documentation of all 9 issues.
 7. ✅ Fixed TPU availability checker script
 8. ✅ Enabled HTTP Load Balancing addon
 
+## Performance Benchmarks (Phase 7) - COMPLETE ✅
+
+**Date:** 2026-02-11 21:32 CST
+**Tool:** Python HTTP/1.1 benchmark (Apache Bench incompatible with GKE Gateway)
+**Total Requests:** 175 (100% success rate)
+
+**Results:**
+- **Max throughput:** 33.70 req/sec (100 requests, concurrency 20)
+- **Stable latency:** ~500ms mean across all load levels
+- **P95 latency:** 715ms at heavy load (excellent for 3B model on TPU)
+- **Linear scalability:** 2.09 → 8.90 → 18.10 → 33.70 req/sec
+
+**Benchmark files:**
+- `benchmarks/results/benchmark_20260211_213211.json` (full metrics)
+- `benchmarks/results/benchmark_summary_20260211_213211.txt` (summary)
+
 ## Next Steps
 
 - [x] Run comprehensive test suite (Phase 6) - COMPLETE ✅
-- [ ] Run performance benchmarks (Phase 7)
-- [ ] Test EPP prefix-cache routing with repeated prompts
+- [x] Run performance benchmarks (Phase 7) - COMPLETE ✅
 - [ ] Monitor TPU utilization metrics
 - [ ] Configure HTTPS/TLS at Gateway frontend (optional)
 - [ ] Set up monitoring/observability (Prometheus/Grafana)

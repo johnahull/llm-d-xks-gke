@@ -1,0 +1,113 @@
+{
+  "metadata": {
+    "timestamp": "20260211_213211",
+    "endpoint": "http://35.214.195.39/llm-d-inference-scheduling/qwen2-3b-pattern1",
+    "model": "/mnt/models"
+  },
+  "scenarios": [
+    {
+      "description": "Baseline",
+      "metrics": {
+        "total_requests": 5,
+        "concurrency": 1,
+        "successful_requests": 5,
+        "failed_requests": 0,
+        "total_time_sec": 2.387798547744751,
+        "throughput_rps": 2.093978993630951,
+        "latency_mean_ms": 477.30746269226074,
+        "latency_median_ms": 504.99582290649414,
+        "latency_p95_ms": 551.9523620605469,
+        "latency_p99_ms": 551.9523620605469,
+        "latency_min_ms": 384.6549987792969,
+        "latency_max_ms": 551.9523620605469,
+        "latency_stddev_ms": 66.6863696718152
+      }
+    },
+    {
+      "description": "Light load",
+      "metrics": {
+        "total_requests": 20,
+        "concurrency": 5,
+        "successful_requests": 20,
+        "failed_requests": 0,
+        "total_time_sec": 2.2465944290161133,
+        "throughput_rps": 8.902363391312653,
+        "latency_mean_ms": 508.27035903930664,
+        "latency_median_ms": 461.48669719696045,
+        "latency_p95_ms": 784.9304676055908,
+        "latency_p99_ms": 784.9304676055908,
+        "latency_min_ms": 412.0748043060303,
+        "latency_max_ms": 784.9304676055908,
+        "latency_stddev_ms": 105.70116200123661
+      }
+    },
+    {
+      "description": "Medium load",
+      "metrics": {
+        "total_requests": 50,
+        "concurrency": 10,
+        "successful_requests": 50,
+        "failed_requests": 0,
+        "total_time_sec": 2.7628259658813477,
+        "throughput_rps": 18.097412076424398,
+        "latency_mean_ms": 497.90443897247314,
+        "latency_median_ms": 473.56486320495605,
+        "latency_p95_ms": 677.2396564483643,
+        "latency_p99_ms": 922.5883483886719,
+        "latency_min_ms": 418.64895820617676,
+        "latency_max_ms": 922.5883483886719,
+        "latency_stddev_ms": 87.52220230499668
+      }
+    },
+    {
+      "description": "Heavy load",
+      "metrics": {
+        "total_requests": 100,
+        "concurrency": 20,
+        "successful_requests": 100,
+        "failed_requests": 0,
+        "total_time_sec": 2.9677774906158447,
+        "throughput_rps": 33.69524848685639,
+        "latency_mean_ms": 554.4865465164185,
+        "latency_median_ms": 533.3031415939331,
+        "latency_p95_ms": 714.8661613464355,
+        "latency_p99_ms": 806.8571090698242,
+        "latency_min_ms": 433.2563877105713,
+        "latency_max_ms": 806.8571090698242,
+        "latency_stddev_ms": 69.94355610069674
+      }
+    }
+  ],
+  "cache_test": {
+    "first_latency_ms": 298.76017570495605,
+    "avg_subsequent_ms": 367.42717027664185,
+    "improvement_pct": -22.983985201393992,
+    "requests": [
+      {
+        "request_num": 1,
+        "latency_ms": 298.76017570495605,
+        "success": true
+      },
+      {
+        "request_num": 2,
+        "latency_ms": 365.09251594543457,
+        "success": true
+      },
+      {
+        "request_num": 3,
+        "latency_ms": 368.65949630737305,
+        "success": true
+      },
+      {
+        "request_num": 4,
+        "latency_ms": 372.06339836120605,
+        "success": true
+      },
+      {
+        "request_num": 5,
+        "latency_ms": 363.8932704925537,
+        "success": true
+      }
+    ]
+  }
+}
