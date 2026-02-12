@@ -44,7 +44,7 @@ spec:
       # vLLM serves HTTP directly (no TLS sidecars)
       # Pattern 3 additions:
       #   --enable-prefix-caching: Enable KV cache prefix sharing
-      #   --prefix-cache-block-size=16: Cache granularity (16 tokens per block)
+      #   Note: --prefix-cache-block-size not supported in vLLM TPU 3.2.5
       args:
       - |
         python3 -m vllm.entrypoints.openai.api_server \
@@ -53,7 +53,6 @@ spec:
           --max-model-len=2048 \
           --tensor-parallel-size=4 \
           --enable-prefix-caching \
-          --prefix-cache-block-size=16 \
           --disable-log-requests
 
       # TPU environment variables
