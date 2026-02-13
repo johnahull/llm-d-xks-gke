@@ -1,0 +1,21 @@
+Pattern 3: Parallel Throughput Benchmark
+========================================
+Timestamp: Fri Feb 13 02:49:47 PM CST 2026
+Gateway IP: 34.6.79.145
+
+Configuration:
+  Total requests: 100
+  Concurrency: 10
+  Prompt: "Request {N}: What is AI?"
+  Max tokens: 10
+
+Results:
+  Successful requests: 100
+  Duration: 4s
+  Throughput: 25.00 req/s
+  Success rate: 100.00%
+
+Comparison with Pattern 1:
+  Pattern 1 throughput: 7.5 req/s
+  Pattern 3 throughput: 25.00 req/s
+  Improvement: 3.33x

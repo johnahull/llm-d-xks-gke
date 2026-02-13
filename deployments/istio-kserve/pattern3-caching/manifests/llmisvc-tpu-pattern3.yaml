@@ -1,27 +1,28 @@
 apiVersion: serving.kserve.io/v1alpha1
 kind: LLMInferenceService
 metadata:
-  name: qwen2-3b-pattern1
+  name: qwen2-3b-pattern3
   namespace: llm-d-inference-scheduling
 spec:
   model:
     uri: hf://Qwen/Qwen2.5-3B-Instruct
     name: Qwen/Qwen2.5-3B-Instruct
-  replicas: 1  # Pattern 1: single replica baseline
+  replicas: 3  # Pattern 3: scale to 3 replicas for N/S-Caching
 
   # Router configuration
   # KServe controller auto-creates HTTPRoute and InferencePool with EPP scheduler
+  # NOTE: scorerWeights not supported in this KServe version - will configure separately if needed
   router:
     route: {}      # Auto-create HTTPRoute
     gateway: {}    # Bind to Gateway
-    scheduler: {}  # Enable EPP scheduler for intelligent routing
+    scheduler: {}  # Enable EPP scheduler (default weights)
 
   # vLLM container template
   template:
     # TPU node selection (required by GKE Warden)
     nodeSelector:
       cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
-      cloud.google.com/gke-tpu-topology: 2x2  # 4 chips, single-host
+      cloud.google.com/gke-tpu-topology: 2x2  # 4 chips per replica, single-host
 
     # Tolerate TPU node pool taint
     tolerations:
@@ -45,6 +46,7 @@ spec:
           --dtype=half \
           --max-model-len=2048 \
           --tensor-parallel-size=4 \
+          --enable-prefix-caching \
           --disable-log-requests \
           --ssl-certfile=/var/run/kserve/tls/tls.crt \
           --ssl-keyfile=/var/run/kserve/tls/tls.key

@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-istio-control-plane-pattern3
+  namespace: llm-d-inference-scheduling
+  labels:
+    app.kubernetes.io/name: networkpolicy
+    app.kubernetes.io/component: istio
+    app.kubernetes.io/part-of: llm-d-pattern3
+spec:
+  # Apply to all pods in the namespace (Istio sidecars need control plane access)
+  # CRITICAL: Without this, Istio sidecars cannot fetch configuration from istiod
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system
+    ports:
+    - protocol: TCP
+      port: 15012  # istiod xDS (configuration distribution)
+    - protocol: TCP
+      port: 15017  # istiod webhook
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system
+    ports:
+    - protocol: TCP
+      port: 15012
+    - protocol: TCP
+      port: 15017

@@ -1,0 +1,77 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-to-epp-scheduler-pattern3
+  namespace: llm-d-inference-scheduling
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: router-scheduler
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow Gateway to call EPP scheduler's ext_proc gRPC server
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: opendatahub
+      podSelector:
+        matchLabels:
+          gateway.networking.k8s.io/gateway-name: inference-gateway
+    ports:
+    - protocol: TCP
+      port: 9002  # ext_proc gRPC server
+    - protocol: TCP
+      port: 9003  # Health check gRPC server
+    - protocol: TCP
+      port: 9090  # Prometheus metrics
+
+  # Allow Prometheus to scrape metrics
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+
+  egress:
+  # Allow EPP scheduler to scrape vLLM metrics from all 3 replicas (for scheduling decisions)
+  # Pattern 3: EPP needs to query all replicas to calculate prefix-cache-scorer
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: qwen2-3b-pattern3
+          kserve.io/component: workload
+    ports:
+    - protocol: TCP
+      port: 8000  # vLLM HTTPS (metrics endpoint /metrics)
+
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # Allow Kubernetes API access (for InferencePool/Pod discovery)
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          component: apiserver
+    ports:
+    - protocol: TCP
+      port: 443
+  # Alternative: Allow to Kubernetes service CIDR
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6443  # API server via service

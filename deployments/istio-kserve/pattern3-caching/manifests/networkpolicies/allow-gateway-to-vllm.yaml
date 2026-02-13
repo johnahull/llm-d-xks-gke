@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-to-vllm-pattern3
+  namespace: llm-d-inference-scheduling
+  labels:
+    app.kubernetes.io/name: networkpolicy
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: llm-d-pattern3
+spec:
+  # Apply to all 3 vLLM replicas in Pattern 3
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: qwen2-3b-pattern3
+
+  policyTypes:
+  - Ingress
+
+  ingress:
+  # Allow traffic from Istio Gateway in opendatahub namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: opendatahub
+      podSelector:
+        matchLabels:
+          gateway.networking.k8s.io/gateway-name: inference-gateway
+    ports:
+    - protocol: TCP
+      port: 8000
+
+  # Allow health probes from kubelet (any pod in any namespace)
+  # Note: In production, this should be restricted to kubelet IP ranges
+  - from:
+    - namespaceSelector: {}
+      podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8000
